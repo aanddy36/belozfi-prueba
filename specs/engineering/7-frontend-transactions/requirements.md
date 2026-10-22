@@ -22,7 +22,7 @@ Diseño completo en `specs/product/infra.md`, sección "1. Frontend" (ruta `/tra
 
 ## Criterios de aceptación
 
-- [ ] La página muestra todos los movimientos de la cuenta, paginados de a 20.
-- [ ] Cambiar de página trae el siguiente lote correctamente, sin duplicar ni saltear ítems.
-- [ ] El formato de monto y signo es idéntico al de la lista resumida de la Home.
-- [ ] "Back to home" vuelve a `/home` sin perder el estado de la sesión.
+- [x] La página muestra todos los movimientos de la cuenta, paginados de a 20.
+- [x] Cambiar de página trae el siguiente lote correctamente, sin duplicar ni saltear ítems.
+- [x] El formato de monto y signo es idéntico al de la lista resumida de la Home (mismo componente `TransactionsList`).
+- [x] "Back to home" vuelve a `/home` sin perder el estado de la sesión.

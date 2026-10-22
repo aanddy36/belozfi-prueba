@@ -4,6 +4,7 @@ import { CardPage } from './pages/Card'
 import { HomePage } from './pages/Home'
 import { LoginPage } from './pages/Login'
 import { TestConnectionPage } from './pages/TestConnectionPage'
+import { TransactionsPage } from './pages/Transactions'
 
 export function AppRouter() {
   return (
@@ -12,6 +13,7 @@ export function AppRouter() {
         <Route path="/" element={<LoginPage />} />
         <Route path="/home" element={<HomePage />} />
         <Route path="/card" element={<CardPage />} />
+        <Route path="/transactions" element={<TransactionsPage />} />
         <Route path="/test-connection" element={<TestConnectionPage />} />
         <Route path="*" element={<NotFoundPage />} />
       </Routes>

@@ -1491,3 +1491,35 @@ Se confirmó que `variant="destructive"` solo se usaba en ese botón en toda la 
 **Respuesta:**
 Se marcaron como cumplidos los 6 criterios de aceptación de `requirements.md` de Spec 6 (freeze, view/hide details, add collateral, cancel card con/sin deuda, lista de depósitos) y se actualizó `worklog.md` a estado "completo", documentando toda la ronda de ajustes de esta sesión (hover, header, grid/Pay visibles en `Frozen`, estilos de `Switch`/`Button` compartidos, deuda visible fuera de `Active`, "Pay" deshabilitado en $0, color del botón de cancelar). Se actualizó este archivo (`prompts.md`) y se procedió al commit.
 
+---
+
+## Prompt 142
+
+**Usuario:**
+> dale, segui con el spec 7
+
+**Respuesta:**
+`requirements.md` ya estaba completo y sin ambigüedades contra `infra.md`, así que se pasó directo a `design.md`: `pages/Transactions.tsx` (nuevo) reusando `listTransactions`/`TransactionsList` del Spec 4 sin cambios, agregando paginación real con `useState` local (no query param en la URL, decisión documentada) y los botones "Previous"/"Next". Se implementó directo y se agregó la ruta `/transactions` al router (reemplazando el catch-all genérico que usaba hasta ahora). Build limpio.
+
+Al revisar el backend para probar la paginación (solo lectura) se encontró que `GET /accounts/me` devolvía `data: null` — no por un bug, sino porque el usuario había probado "Cancel card" de verdad en el Spec 6 y su cuenta real quedó `closed` (confirmando que ese flujo funciona). Sin una cuenta activa con movimientos, se le preguntó al usuario si quería crear una cuenta nueva él mismo o que se armara una descartable para probar.
+
+---
+
+## Prompt 143
+
+**Usuario:**
+> ya la cree
+
+**Respuesta:**
+Se verificó (solo lectura) que `GET /accounts/me`/`GET /transactions` ya apuntaban correctamente a la cuenta nueva del usuario (no a la vieja `closed`) — confirmación adicional en uso real de que el fix de `find_account_by_user` (Spec 6) funciona de punta a punta. La cuenta nueva tenía 0 movimientos; se decidió no generar transacciones sintéticas sobre la cuenta real solo para probar la paginación multi-página (la lógica reusa piezas ya probadas en Specs 3-5), y se le pidió al usuario confirmar el funcionamiento general.
+
+---
+
+## Prompt 144
+
+**Usuario:**
+> funciona bien
+
+**Respuesta:**
+Se marcaron como cumplidos los 4 criterios de aceptación de `requirements.md` de Spec 7 y se escribió `worklog.md` con estado "completo", dejando documentado como único matiz que la paginación multi-página no se probó con más de 20 ítems reales (por no querer inflar la cuenta real del usuario con datos falsos) aunque la lógica subyacente ya estaba probada en specs anteriores.
+
