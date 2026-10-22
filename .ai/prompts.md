@@ -1115,3 +1115,109 @@ Se encontró (no un bug, un comportamiento a documentar) que la confirmación la
 **Respuesta:**
 Se agregó este prompt (el presente) a `prompts.md` antes de proceder al commit del Spec 3.
 
+---
+
+## Prompt 106
+
+**Usuario:**
+> empecemos con el spec 4 del frontend. En el login, has que esten llenando por defectos los valores de username y password con los valores que hablamos.
+
+**Respuesta:**
+Se buscó en `infra.md`/`product.md`/`prompts.md` algún valor concreto de usuario/contraseña por defecto para el Login y no se encontró ninguno (solo que "cualquier valor ingresado inicia sesión"). Se preguntó directamente al usuario qué valores quería.
+
+---
+
+## Prompt 107
+
+**Usuario:**
+> username usa john.doe y password TempPass123!
+
+**Respuesta:**
+Con los valores confirmados, se construyó el Spec 4 completo (Login + Home), no solo el detalle pedido:
+- Se encontró y arregló un bug heredado del Spec 0: el `tsconfig.json` raíz no tenía el alias `@/*` (solo `references` a los tsconfig hijos), por lo que el CLI de `shadcn add` generaba una carpeta literal `@/` en vez de resolver a `src/` — se agregó `compilerOptions.paths` al root.
+- Se agregaron los componentes `input`/`label` de shadcn (no existe `form` en esta versión del registro; el formulario usa `react-hook-form` directo).
+- Se reescribió `api/client.ts` para el envelope estándar del backend (`{statusCode, message, data|error}`), dejando `/health` (Spec 0) explícitamente afuera (sigue sin ese formato).
+- Se creó `Login.tsx` (username/password precargados, cualquier valor navega a `/home`), `Home.tsx` (`GET /accounts/me`, rama `404` → silueta "Create card", rama con cuenta → tarjeta con sus 5 estados visuales + grid 2x2 + primeros 6 movimientos si `Active`), los tipos comunes (`account.ts`, `transaction.ts`), `formatCents`, y los módulos `features/accounts` y `features/transactions` (services + componentes).
+- Se aplicó una paleta morada estilo Nu en `index.css`.
+- Se corrió `npm run build` (limpio) y se verificó que las rutas sirvan `200`, pero se avisó explícitamente que no había navegador conectado para verificar visualmente (se había intentado invocar el skill de Chrome y el usuario declinó instalarlo).
+
+---
+
+## Prompt 108
+
+**Usuario:**
+> cambia el formato levemente. Haz que el bag este todo en un tono claro de purple, y centrado un contenedor con el login, que sea cuadrado y mas claro si? Tambien crea un logo para Acme Credit, ese sera el logo que usemos. El logo puede ser una letra en color primary
+
+**Respuesta:**
+Se creó `AcmeLogo` (componente reusable, una "A" en badge redondeado, con variante `inverted` para fondos oscuros) y se aplicó en 3 lugares: header del Login, esquina superior-izquierda de la tarjeta de crédito (reemplazando el texto plano "Acme"), e ícono de cada movimiento. Se cambió el fondo del Login a `bg-violet-50` con una card blanca centrada (`rounded-3xl`, padding generoso).
+
+---
+
+## Prompt 109
+
+**Usuario:**
+> haz que todos los botones tengan el mismo radius, y el cursor pointer
+
+**Respuesta:**
+Se agregó `cursor-pointer` al `buttonVariants` base de `button.tsx` (Tailwind resetea el cursor de `<button>` a `default` por su preflight, así que no venía solo) — fix centralizado, aplica a todos los usos presentes y futuros del componente `Button`. Se ajustó `CreateCardPlaceholder` (el único botón que no usaba el componente `Button`) para compartir el mismo `rounded-lg` y también `cursor-pointer`.
+
+---
+
+## Prompt 110
+
+**Usuario:**
+> el fondo de todas las paginas de la app hazlo como la de home. El fondo purpura y la seccion del medio mas clara, haz que el width sea maximo cierto, y esa parte que vaya de arriba a abajo
+
+**Respuesta:**
+Se creó `PageShell` (layout compartido): fondo `bg-violet-50` de borde a borde, columna central blanca `max-w-md` con `min-h-screen` (de arriba a abajo, no solo una card flotante). Se aplicó a las 4 páginas existentes (`Login`, `Home`, `TestConnectionPage`, y el fallback `NotFoundPage` del router), ajustando el contenido interno de cada una para centrarse dentro del shell en vez de manejar su propio fondo/ancho.
+
+---
+
+## Prompt 111
+
+**Usuario:**
+> en el layout compartido de las paginas, agrega en el header a la izq el logo, que al clickear te lleva a home, y a la derecha la posibilidad de desloggearte
+
+**Respuesta:**
+Se agregó un header a `PageShell` (logo `AcmeLogo` a la izquierda, link a `/home`; "Log out" a la derecha, link a `/` — no hay sesión real que limpiar, solo navega) con un prop `showHeader` para ocultarlo en Login y Test connection (no tiene sentido mostrar logout antes de "loguearse").
+
+---
+
+## Prompt 112
+
+**Usuario:**
+> arriba de create card, agrega el + para crear la tarjeta.
+
+**Respuesta:**
+Se agregó un ícono `Plus` (`lucide-react`) arriba del texto "Create card" en `CreateCardPlaceholder`, centrado junto con el texto.
+
+---
+
+## Prompt 113
+
+**Usuario:**
+> vale, por ahora solo es eso entonces? login, y llevar a la home? pq al hundir no funciona el boton
+
+**Respuesta:**
+Se interpretó inicialmente como el botón "Log in" de Login y se empezó a revisar el log del dev server de Vite buscando errores (se encontró un error transitorio de sintaxis ya resuelto en una edición anterior, irrelevante). El usuario interrumpió para aclarar que se refería al botón "Create card".
+
+---
+
+## Prompt 114
+
+**Usuario:**
+> me refiero que al hundir el boton de crear tarjeta no funciona
+
+**Respuesta:**
+Se aclaró que es el comportamiento esperado, no un bug: el modal de "crear tarjeta garantizada" es el Spec 5 (modales), todavía no construido — por eso el botón no tiene ninguna acción asignada todavía. Se resumió qué cubre cada spec restante del frontend (Spec 5: modales de acción; Spec 6: página `/card`; Spec 7: página `/transactions`), y se preguntó si seguir con el Spec 5 o cerrar primero el 4.
+
+---
+
+## Prompt 115
+
+**Usuario:**
+> bueno, el 4 no lo puedo comprobar porque no existen tarjetas, pero no importa, lo verificamos en el spec 5. Anota los prompts y haz el commit
+
+**Respuesta:**
+Se verificó contra el backend real que `GET /accounts/me` efectivamente devuelve `404 ACCOUNT_NOT_FOUND` (no hay cuenta cargada), confirmando que la rama `CreateCardPlaceholder` de la Home se ejercita contra datos reales y no solo en el código. Se escribió `worklog.md` del Spec 4 con estado "implementado, verificación visual parcial" — documentando todo lo hecho, lo probado (build limpio, rutas `200`, 404 real), y dejando explícito lo que queda pendiente de verificar en Spec 5 (el estado `Active` completo de la Home, y toda la apariencia visual que no se pudo confirmar por no tener navegador conectado). No se marcó ningún criterio de aceptación de `requirements.md` como cumplido, ya que ninguno se pudo verificar de punta a punta todavía.
+
