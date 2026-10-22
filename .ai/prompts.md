@@ -861,3 +861,53 @@ Se incorporó el botón "Test connection" + toast al Spec 0, y se crearon los 8 
 **Respuesta:**
 Se creó el Spec 8 (`8-async-jobs-iac`): templates YAML (AWS SAM/CloudFormation) para Extractos, Intereses y Mora en `backend/iac/`, sin desplegarlos, con Lambdas stub y criterios de aceptación centrados en validez sintáctica y cobertura de los recursos documentados en `infra.md`.
 
+---
+
+## Prompt 82
+
+**Usuario:**
+> vale, ahora refinemos bien el primer spec. Lo que quiero es que crees la estructura inicial de los repos. En el front: usaras React con React router, zod, react hook form, shadcn, zustand, tailwind, typescript. Quiero que la estructura de las carpetas sea common/, features/, pages/ y App.tsx... Recuerda las variables de ambiente... Sientes que falta algo? alguna duda? alguna libreria que crees que falte agregar?
+
+**Respuesta:**
+Se confirmó el entendimiento de la estructura y se señalaron 3 huecos (ubicación de tipos compartidos, del cliente API, y de los componentes generados por shadcn) y 4 librerías recomendadas con su justificación: `@tanstack/react-query` (polling, invalidación de caché, paginación), `date-fns` (formateo/aritmética de fechas), `lucide-react` (íconos de shadcn), `sonner` (toasts), además de `@hookform/resolvers` como pieza necesaria para conectar `react-hook-form` con `zod`.
+
+---
+
+## Prompt 83
+
+**Usuario:**
+> 1. de acuerdo. 2. Fuera de common, en la carpeta api/. En cada feature puedes crear la carpeta services o el archivo service, con los llamados a la api. 3. todo bien. confirmo esas librerias.
+
+**Respuesta:**
+Se escribió en el Spec 0 la estructura completa de carpetas del frontend (`api/`, `common/{components/ui, hooks, utils, types}`, `features/{feature}/{components,hooks,services,store}`, `pages/`), el stack de librerías confirmado, y el detalle de la pantalla "Test connection" de este spec.
+
+---
+
+## Prompt 84
+
+**Usuario:**
+> ahora el backend. Lo quiero feature based. Usa fastapi y pydantic. Tendras las carpetas modules/, shared/ y db/... En modules crea una carpeta por cada modulo... En cada modulo crea controllers/, models/, routes/, services/. El .env sera necesario. Falta algo mas?
+
+**Respuesta:**
+Se propuso agregar `schemas/` como quinta carpeta en cada módulo (separar ORM de DTOs Pydantic), y se ubicaron las piezas transversales ya diseñadas: `User`/`LedgerEntry`/`IdempotencyKey` en `shared/models/`, los helpers de idempotencia/lock/ledger en `shared/utils/`, y `main.py`/config en una carpeta `core/` nueva. Se presentó la estructura completa con los 6 módulos (accounts, cards, collateral, purchases, payments, transactions).
+
+---
+
+## Prompt 85
+
+**Usuario:**
+> si. una cosa, no es necesario que los modulos tengan controllers, models, etc como carpetas, podemos hacerlos archivos y ya. Alembic para que? las db las creamos con un script que me pases y la hago manual. En iac, crea un archivo .yaml por cada una de las 3 features asincronas
+
+**Respuesta:**
+Se actualizó el Spec 0: cada módulo pasa a ser 5 archivos (`controller.py`, `model.py`, `schema.py`, `route.py`, `service.py`) en vez de subcarpetas, y se sacó Alembic del stack. Se actualizó el Spec 1: el esquema se crea con `scripts/create_tables.py` (usa `Base.metadata.create_all()` sobre una `Base` declarativa compartida) + `scripts/seed.py`, ambos corridos manualmente en local y en Supabase — sin migraciones. Se confirmó que `iac/` ya tenía un `.yaml` por cada una de las 3 features asíncronas (Spec 8), sin cambios ahí.
+
+---
+
+## Prompt 86
+
+**Usuario:**
+> actualiza prompts.
+
+**Respuesta:**
+Se actualizó este archivo (`prompts.md`) con los prompts 82 a 85.
+

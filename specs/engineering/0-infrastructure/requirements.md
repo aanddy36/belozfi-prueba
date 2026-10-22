@@ -12,21 +12,99 @@ Levantar el esqueleto de frontend, backend y base de datos (sin lógica de negoc
 
 ## Backend (`backend/`)
 
-- FastAPI + Uvicorn.
-- Estructura: `app/main.py`, `app/core/config.py` (lee `DATABASE_URL` y demás env vars), `app/db/session.py` (conexión a Postgres vía SQLAlchemy).
+### Stack
+
+FastAPI + Pydantic + SQLAlchemy. **Sin Alembic** — el esquema se crea con un script manual (ver Spec 1), no con migraciones.
+
+### Estructura de carpetas (feature-based)
+
+```
+backend/
+├── .env / .env.example
+├── requirements.txt
+├── iac/                          # Spec 8 — un .yaml por feature asíncrona, no desplegado
+│   ├── extractos.yaml
+│   ├── intereses.yaml
+│   └── mora.yaml
+└── app/
+    ├── main.py                    # instancia FastAPI, registra routers, CORS
+    ├── core/
+    │   └── config.py               # carga de env vars (pydantic-settings)
+    ├── db/
+    │   └── session.py              # engine, SessionLocal, get_db dependency
+    ├── shared/
+    │   ├── models/                 # ORM compartido: User, LedgerEntry, IdempotencyKey
+    │   └── utils/                  # idempotency.py, locking.py, ledger.py
+    └── modules/
+        ├── accounts/
+        │   ├── controller.py
+        │   ├── model.py
+        │   ├── schema.py
+        │   ├── route.py
+        │   └── service.py
+        ├── cards/          # misma convención de 5 archivos
+        ├── collateral/
+        ├── purchases/
+        ├── payments/
+        └── transactions/
+```
+
+Cada módulo es un conjunto de **archivos**, no subcarpetas (son chicos, no justifican una carpeta por capa). `controller.py` orquesta la request, `service.py` tiene la lógica de negocio/transacción, `model.py` es el ORM, `schema.py` son los DTOs Pydantic, `route.py` registra el router de ese módulo.
+
+### Este spec en particular
+
 - Endpoint `GET /health`: hace un `SELECT 1` contra la DB y responde `{ "status": "ok", "db": "ok" }` (o el error correspondiente si la DB no responde).
 - CORS configurado para aceptar el origen del frontend (local primero, se agrega el dominio de Netlify al desplegar).
-- `requirements.txt` con: `fastapi`, `uvicorn`, `sqlalchemy`, `psycopg2-binary`, `alembic`, `python-dotenv`, `pydantic-settings`.
+- `requirements.txt` con: `fastapi`, `uvicorn`, `sqlalchemy`, `psycopg2-binary`, `python-dotenv`, `pydantic-settings`.
+- En este spec, `modules/` queda vacía salvo por lo que ya exista de `app/main.py` + `/health` — los 6 módulos se construyen en los Specs 2-3.
 
 ## Frontend (`frontend/`)
 
-- React + Vite.
-- `react-router-dom` instalado (preparando las rutas de specs futuros: `/`, `/home`, `/card`, `/transactions`).
-- Una sola pantalla por ahora: botón **"Test connection"**.
-  - Al hacerlo, llama a `GET {VITE_API_URL}/health`.
-  - Si responde `status: ok` y `db: ok` → muestra un **toast de éxito**.
-  - Si falla (red o DB) → muestra un toast de error con el motivo.
-- `.env` con `VITE_API_URL` (apunta a `http://localhost:8000` en local).
+### Stack
+
+React + Vite + TypeScript, con: `react-router-dom`, `zod`, `react-hook-form` + `@hookform/resolvers`, `zustand`, `tailwindcss`, shadcn/ui, `@tanstack/react-query`, `date-fns`, `lucide-react`, `sonner`.
+
+### Estructura de carpetas (feature-based)
+
+```
+frontend/src/
+├── main.tsx
+├── App.tsx
+├── router.tsx                  # definición de rutas, importado en App.tsx
+├── api/
+│   └── client.ts                # wrapper de fetch: base URL, manejo de Idempotency-Key
+├── common/
+│   ├── components/
+│   │   └── ui/                  # primitivas generadas por shadcn (button, dialog, etc.)
+│   ├── hooks/
+│   ├── utils/
+│   └── types/                   # tipos TS compartidos (Account, Card, Purchase, etc.)
+├── features/
+│   └── {feature}/
+│       ├── components/
+│       ├── hooks/
+│       ├── services/            # llamados a la API de esta feature (usan api/client.ts)
+│       └── store/                # Zustand, solo si la feature necesita estado propio
+└── pages/
+    ├── Login.tsx
+    ├── Home.tsx
+    ├── Card.tsx
+    └── Transactions.tsx
+```
+
+En este spec, `features/` queda vacía (sin código real todavía) — las carpetas de cada feature (`accounts/`, `cards/`, `collateral/`, `purchases/`, `payments/`, `transactions/`, `auth/`) se crean en los Specs 4-7, siguiendo esta misma convención.
+
+### Pantalla de este spec
+
+Una sola pantalla, sin router todavía más que la raíz: botón **"Test connection"**.
+- Al hacerlo, llama a `GET {VITE_API_URL}/health` (vía `api/client.ts`).
+- Si responde `status: ok` y `db: ok` → `sonner` muestra un toast de éxito.
+- Si falla (red o DB) → toast de error con el motivo.
+
+### Configuración
+
+- `.env` (gitignored) + `.env.example` (committed, con placeholders) — variable `VITE_API_URL`, apunta a `http://localhost:8000` en local.
+- `components.json` de shadcn configurado para que genere en `src/common/components/ui/`.
 
 ## Base de datos local
 
