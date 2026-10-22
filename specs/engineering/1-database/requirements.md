@@ -1,20 +1,35 @@
-# Spec 1 — Database (schema + seed)
+# Spec 1 — Database (schema manual + modelos ORM)
 
 ## Objetivo
 
-Crear el esquema completo de base de datos (las 9 tablas definidas en `specs/product/infra.md` sección 3) mediante un script manual (sin migraciones), y poblar el único usuario del sistema.
+Dejar la estructura completa de base de datos (las 9 tablas definidas en `specs/product/infra.md` sección 3) corrida manualmente en Postgres local y en Supabase, a partir de un único archivo SQL con el DDL. En el backend, mapear esas mismas tablas como modelos SQLAlchemy (equivalente a los `*.entity.ts` de Nest) para que los Specs 2/3 los usen vía ORM.
 
 ## Alcance
 
-**Incluye:** modelos SQLAlchemy (repartidos entre `shared/models/` y cada `modules/{módulo}/model.py`, según la estructura del Spec 0), script de creación de tablas, script de seed.
+**Incluye:**
+- Un archivo `backend/app/db/schema.sql` con el `CREATE TABLE` de las 9 tablas (en orden de dependencia por FK), los índices explícitos acordados, y el `INSERT` de seed del único usuario (John Doe).
+- Los modelos SQLAlchemy (repartidos entre `shared/models/` y cada `modules/{módulo}/model.py`, según la estructura del Spec 0) como mapeo ORM puro de esas tablas.
 
-**No incluye:** ningún endpoint que use estas tablas (eso empieza en el Spec 2). Alembic/migraciones — se decidió no usarlas; el esquema se crea y se recrea a mano cuando haga falta.
+**No incluye:**
+- Ningún script Python que cree o modifique el esquema (`create_tables.py`/`seed.py` quedan descartados — ver "Decisiones" abajo). El DDL se corre **a mano**, por el usuario, en ambos entornos.
+- Alembic/migraciones — no se usan.
+- Ningún endpoint que use estas tablas (eso empieza en el Spec 2).
 
 ## Referencia
 
-El esquema completo (campos, tipos, relaciones, decisiones de diseño) ya está documentado en `specs/product/infra.md`, sección "3. Base de datos". Esta spec es la implementación de ese diseño, no una redefinición.
+El esquema completo (campos, tipos, relaciones, decisiones de diseño de negocio) ya está documentado en `specs/product/infra.md`, sección "3. Base de datos". Esta spec traduce ese diseño a DDL ejecutable y a modelos ORM — no lo redefine.
 
-## Tablas a crear (ver `infra.md` sección 3 para el detalle de columnas) y dónde vive cada modelo
+## Decisiones de este spec
+
+- **UUID nativo de Postgres**: todas las columnas `id` y las FKs usan el tipo `UUID` de Postgres con default `gen_random_uuid()`. Esta función es nativa desde PostgreSQL 13 (no requiere habilitar la extensión `pgcrypto` aparte) — se asume Postgres 13+ tanto en local como en Supabase.
+- **`accounts.user_id` sin UNIQUE**: el diagrama de `infra.md` muestra `users ||--|| accounts` (1:1), pero se decide **no** forzar esa unicidad a nivel de constraint. Con un único usuario en todo el sistema (John Doe), el conflicto nunca se da en la práctica; se prioriza mantenerlo simple. `cards.account_id` sí mantiene su `UNIQUE` (ya estaba así en `infra.md`).
+- **Índices explícitos** en la columna `account_id` de `purchases`, `payments`, `ledger_entries` y `collateral_deposits` — pensando en las queries de los Specs 2/3 (listar movimientos, reparto FIFO de pagos, etc.), más allá del índice automático que Postgres ya crea sobre la PK.
+- **`CHECK` constraints** sobre las columnas de estado/enum (`status`, `installment_plan`) para que la DB rechace valores fuera de lo definido en `infra.md`, sin agregar tablas de catálogo.
+- **Sin script de reset**: si hace falta recrear el esquema durante el desarrollo de los Specs 2/3, se hace a mano (`DROP TABLE`/pgAdmin) — no se construye una herramienta para esto.
+- **Seed vía SQL, no vía Python**: el único usuario del sistema se inserta con un `INSERT ... ON CONFLICT (email) DO NOTHING` dentro del mismo `schema.sql`, no con un script `seed.py`.
+- **Timestamps como `TIMESTAMPTZ`**: todas las columnas de fecha/hora (`created_at`, `updated_at`, `requested_at`, `confirmed_at`, `authorized_at`, `applied_at`, `mora_started_at`, `collateral_applied_at`, `last_accrued_at`, `activated_at`) usan `TIMESTAMPTZ`, no `TIMESTAMP`. Postgres las guarda normalizadas en UTC sin importar la zona horaria del servidor que inserta — evita discrepancias entre el Postgres local y Supabase al comparar fechas contra "hoy" (`payment_due_date`, mora, etc.).
+
+## Tablas a crear (ver `infra.md` sección 3 para el detalle de negocio de cada campo) y dónde vive cada modelo ORM
 
 | Tabla | Modelo vive en |
 |---|---|
@@ -28,25 +43,23 @@ El esquema completo (campos, tipos, relaciones, decisiones de diseño) ya está 
 | `payments` | `app/modules/payments/model.py` |
 | `payment_allocations` (FK a `purchase_id`, no a `installment_id`) | `app/modules/payments/model.py` |
 
-Todos los modelos comparten una única `Base` declarativa (`app/db/base.py`), para que `Base.metadata.create_all()` los vea a todos.
+Todos los modelos comparten una única `Base` declarativa (`app/db/base.py`, del Spec 0). Los modelos **no** se usan para generar el esquema (no hay `Base.metadata.create_all()` en ningún lado de este spec) — existen únicamente para que los servicios de los Specs 2/3 lean/escriban estas tablas vía ORM.
 
 ## Tareas
 
-- Crear `app/db/base.py` con `Base = declarative_base()`.
-- Definir cada modelo SQLAlchemy (solo mapeo de columnas/tipos/constraints/FKs según `infra.md`, sin lógica).
-- Montos siempre como enteros (`_cents`), nunca `float`.
-- Script `backend/scripts/create_tables.py`: importa todos los modelos (para que se registren en `Base.metadata`) y corre `Base.metadata.create_all(bind=engine)`. Se corre manualmente, no está automatizado en ningún pipeline.
-- Script `backend/scripts/seed.py`: crea el único `user` — **John Doe**, `john.doe@hotmail.com`. Idempotente (no duplica si ya existe). No crea `account` (eso ocurre cuando el usuario hace "Create card" desde el frontend).
+- Escribir `backend/app/db/schema.sql`: `CREATE TABLE` de las 9 tablas en orden de dependencia, con tipos, `DEFAULT`, `CHECK` y `UNIQUE` según las decisiones de este spec; los 4 índices explícitos; el `INSERT` de seed de John Doe (`john.doe@hotmail.com`) al final.
+- Definir cada modelo SQLAlchemy (solo mapeo de columnas/tipos/constraints/FKs, sin lógica de negocio) coincidiendo exactamente con `schema.sql`.
+- Montos siempre como enteros (`_cents`, `BigInteger` en el modelo), nunca `float`.
 
 ## Aplicación del esquema
 
-- **Local**: `python scripts/create_tables.py` contra `DATABASE_URL` apuntando a Postgres local, luego `python scripts/seed.py`.
-- **Supabase**: los mismos 2 scripts, corridos **una sola vez** manualmente desde la máquina local apuntando a la connection string de Supabase (no hay CI/CD para esto, ver `infra.md` sección 5).
+- **Local**: correr `backend/app/db/schema.sql` manualmente contra la DB local (pgAdmin o `psql`).
+- **Supabase**: correr el mismo `schema.sql` manualmente, una sola vez, desde el SQL Editor de Supabase o conectado por `psql` a la connection string (no hay CI/CD para esto, ver `infra.md` sección 5).
 
 ## Criterios de aceptación
 
-- [ ] `python scripts/create_tables.py` crea las 9 tablas correctamente en una DB local limpia.
-- [ ] Las FKs y constraints únicas coinciden exactamente con lo definido en `infra.md`.
-- [ ] Correr `create_tables.py` dos veces no falla ni duplica nada (usa `checkfirst=True`, comportamiento por defecto de `create_all`).
-- [ ] `seed.py` inserta a John Doe sin errores, y correrlo dos veces no lo duplica.
-- [ ] Los mismos 2 scripts se corrieron contra Supabase y las tablas + el seed existen ahí también.
+- [x] Correr `schema.sql` contra una DB local limpia crea las 9 tablas, todas las FKs, los `CHECK`, el `UNIQUE` de `cards.account_id` y los 4 índices explícitos, sin errores.
+- [x] El `INSERT` de seed agrega a John Doe; volver a correr `schema.sql` completo no duplica el usuario (`ON CONFLICT (email) DO NOTHING`) ni falla por tablas ya existentes si se corre con `IF NOT EXISTS`.
+- [x] Los tipos/constraints de cada modelo SQLAlchemy coinciden exactamente con `schema.sql` (mismos nombres de columna, mismos tipos, mismas nullability).
+- [x] El mismo `schema.sql` se corrió contra Supabase y las 9 tablas + el seed existen ahí también.
+- [x] Ningún modelo usa `Float` para un campo `_cents`.

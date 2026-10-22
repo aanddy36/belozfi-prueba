@@ -911,3 +911,105 @@ Se actualizó el Spec 0: cada módulo pasa a ser 5 archivos (`controller.py`, `m
 **Respuesta:**
 Se actualizó este archivo (`prompts.md`) con los prompts 82 a 85.
 
+---
+
+## Prompt 87
+
+**Usuario:**
+> hola, estamos trabajando en `specs/product/`, ya esta el `specs/engineering/1-database/`, ahora vendria el segundo. Para eso, necesitamos refinarlo. Luego, disenaras el design.md con HUs. Al desarrollar, debes escribir en ese spec un worklog.md. Ademas, ve escribiendo los prompts en `.ai/prompts.md`, bien ahi?
+
+**Respuesta:**
+Se interpretó (erróneamente, corregido en el Prompt 88) que el Spec 1 ya estaba implementado y que tocaba refinar el Spec 2 (Accounts & Cards API). Se leyó su `requirements.md` contra `infra.md` sección 2.1, y se preguntaron 3 decisiones de diseño no resueltas (formato de error de la API, qué hacer si se reusa una `Idempotency-Key` con body distinto, si `GET /cards/me/details` debe funcionar con tarjeta `inactive`), respondidas como: envelope estructurado `{ "error": { "code", "message" } }`, rechazar con `409` el conflicto de idempotencia, y bloquear con `409` el detalle de tarjeta inactiva. Este trabajo quedó pausado por la corrección del Prompt 88.
+
+---
+
+## Prompt 88
+
+**Usuario:**
+> espera. Donde estas trabajando? ayer se hizo el spec `0-infrastructure`, ahora debemos trabajar el spec `1-database`, me equivoque dandote la info de en que spec ibamos. En el spec 1, revisemos los requirements. Una vez estipulado conmigo, haces el design en base a ese. Entendido?
+
+**Respuesta:**
+Se corrigió el foco hacia el Spec 1 (database), que todavía no tiene `worklog.md` (no se implementó). Revisando su `requirements.md` contra `infra.md` sección 3, se preguntaron 4 puntos no cerrados: si forzar `UNIQUE` en `accounts.user_id` (el diagrama ER dice 1:1 pero la columna no lo marcaba), si agregar un script de reset del esquema, si agregar índices explícitos en las FK `account_id` de `purchases`/`payments`/`ledger_entries`/`collateral_deposits`, y si generar los UUID del lado de Python o nativos de Postgres. Respuestas: sin `UNIQUE` (un solo usuario en el sistema, no hace falta), sin script de reset (se hace a mano si hace falta), sí agregar los 4 índices, y UUID nativo de Postgres (`gen_random_uuid()`).
+
+---
+
+## Prompt 89
+
+**Usuario:**
+> aun no. Mira, el objetivo del requirements es tener la estructura de db en mi postgres local y en supabase, okay? yo lo hare manual ambas, tu me pasaras los queries para crear las tablas e indices. Ademas, en el backend crearas los esquemas de la DB, asi como en Nest se usaria `user.entities.ts`, por ejemplo, aqui mapearas las entidades. Eso te parece correcto?
+
+**Respuesta:**
+Se confirmó el cambio de alcance: se descarta `create_tables.py`/`seed.py`/Alembic — el DDL se entrega como SQL puro para que el usuario lo corra manualmente (local + Supabase), y el backend solo mantiene los modelos SQLAlchemy como mapeo ORM puro (equivalente a las `*.entity.ts` de Nest), sin que generen el esquema. Se preguntaron 2 detalles de entrega: si el seed de John Doe también va como `INSERT` manual en SQL o como script Python, y si el DDL va en un solo archivo `schema.sql` o uno por tabla. Respuestas: `INSERT` manual en SQL (mismo archivo) y un solo `schema.sql`.
+
+Se reescribió `requirements.md` completo reflejando: objetivo y alcance nuevos, sección "Decisiones de este spec" (UUID nativo de Postgres sin necesidad de extensión desde PG13+, sin `UNIQUE` en `accounts.user_id`, índices explícitos en las 4 FKs acordadas, `CHECK` constraints para los enums, sin script de reset, seed vía SQL), tabla de modelos sin cambios, tareas actualizadas, y criterios de aceptación ajustados al nuevo flujo manual.
+
+---
+
+## Prompt 90
+
+**Usuario:**
+> los timestamps en que formato los agregaras?
+
+**Respuesta:**
+Se recomendó `TIMESTAMPTZ` en las 10 columnas de fecha/hora del esquema, en vez de `TIMESTAMP` a secas — Postgres normaliza y guarda internamente en UTC sin importar la zona horaria del servidor que inserta, evitando discrepancias entre el Postgres local y Supabase al comparar fechas contra "hoy" (`payment_due_date`, mora, etc., que se calculan en Spec 2). Se agregó como decisión explícita en `requirements.md`.
+
+---
+
+## Prompt 91
+
+**Usuario:**
+> dale, sigamos al design
+
+**Respuesta:**
+Se escribió `design.md` completo con los 2 entregables del spec: (1) `backend/sql/schema.sql` — DDL completo de las 9 tablas en orden de dependencia, con `CREATE TABLE IF NOT EXISTS`, `CHECK` constraints nombrados (`ck_accounts_status`, `ck_cards_status`, etc.), `UNIQUE` en `cards.account_id`, los 4 índices explícitos acordados, y el `INSERT ... ON CONFLICT DO NOTHING` de seed de John Doe al final; (2) los 8 modelos SQLAlchemy (`User`, `LedgerEntry`, `IdempotencyKey`, `Account`, `Card`, `CollateralDeposit`, `Purchase`, `Payment`/`PaymentAllocation`) usando el tipo `UUID` nativo de Postgres con `server_default=text("gen_random_uuid()")`, y `CheckConstraint` en `__table_args__` espejando exactamente los `CHECK` del SQL. Se señaló una sutileza de sintaxis (los `server_default` de texto necesitan las comillas simples dentro del string de Python, ej. `"'active'"`, porque SQLAlchemy los inserta tal cual en el DDL) y se dejó una nota para los Specs 2/3: como los `id` se generan en el servidor, hace falta `db.flush()` para obtener el `id` de una fila recién insertada antes de encadenar otro insert dentro de la misma transacción.
+
+---
+
+## Prompt 92
+
+**Usuario:**
+> no ibas a crear un archivo en el backend?
+
+**Respuesta:**
+Se verificó que `design.md` solo había documentado el código, sin crear ningún archivo real en `backend/` (`app/modules/` seguía vacío, `app/shared/models/` sin los 3 archivos). Se intentó crear `backend/sql/schema.sql` directamente, pero el usuario rechazó la ejecución de la tool.
+
+---
+
+## Prompt 93
+
+**Usuario:**
+> que estas haciendo? dime que haras
+
+**Respuesta:**
+Se explicó el plan antes de ejecutar nada: crear `schema.sql` (sin conectarse a ninguna DB) y los 8 archivos de modelos SQLAlchemy + sus `__init__.py`, sin tocar `.env` ni configuración. Se preguntó si continuar.
+
+---
+
+## Prompt 94
+
+**Usuario:**
+> primero creas el schema.sql y ahi paras. Yo ejecuto eso en local y supabase, cuando te de el visto bueno puedes hacer el 2. Okay? el .sql escribelo en `@backend/app/db/schema.sql`
+
+**Respuesta:**
+Se creó únicamente `backend/app/db/schema.sql` (ruta distinta a la que decía `design.md` hasta ese momento, `backend/sql/schema.sql`) y se detuvo el trabajo ahí, esperando confirmación del usuario tras correrlo él mismo en local y Supabase.
+
+---
+
+## Prompt 95
+
+**Usuario:**
+> listo, ya creado en mi local y supabase
+
+**Respuesta:**
+Se crearon los 8 archivos de modelos SQLAlchemy (`app/shared/models/{user,ledger_entry,idempotency_key}.py`, `app/modules/{accounts,cards,collateral,purchases,payments}/model.py`) más los `__init__.py` de cada módulo nuevo y de `app/modules/`. Se verificó que todos importan sin error y que `Base.metadata` registra las 9 tablas esperadas (`python -c "from app.shared.models... import ...; ..."`). Se escribió `worklog.md` del Spec 1 documentando lo hecho y lo probado. Se corrigieron las 4 referencias a la ruta vieja (`backend/sql/schema.sql`) en `requirements.md` y `design.md` para que coincidan con la ruta real (`backend/app/db/schema.sql`), y se ajustó la nota de desvíos en `worklog.md` en consecuencia.
+
+---
+
+## Prompt 96
+
+**Usuario:**
+> actualiza el worklog diciendo que ya terminaste y el prompts.md
+
+**Respuesta:**
+Se agregó una sección "Cierre" a `worklog.md` del Spec 1, repasando uno por uno los 5 criterios de aceptación de `requirements.md` y confirmando que quedan cumplidos, y marcando el spec como terminado (sin nada pendiente, sigue el Spec 2). Se marcaron esos mismos 5 checkboxes como `[x]` en `requirements.md`. Se actualizó este archivo (`prompts.md`) con los prompts 92 a 96.
+
