@@ -781,3 +781,83 @@ Se escribió la sección 5 "Entornos y despliegue" en `infra.md`: desarrollo loc
 **Respuesta:**
 Se actualizó este archivo (`prompts.md`) con los prompts 68 a 72.
 
+---
+
+## Prompt 74
+
+**Usuario:**
+> ahora como consideras que deba organizar las carpetas? divido los repos de front y backend por separado y subo ambos a github? donde guardaria estos 4 archivos generales? tenia pensado crear una carpeta ai y ahi poner prompts.md, el resto donde iria?
+
+**Respuesta:**
+Se recomendó un monorepo (no 2 repos separados), con `frontend/` y `backend/` como subcarpetas, y los 4 archivos de documentación (`CHALLENGE.md`, `product.md`, `infra.md`, `PROMPTS.md`) en la raíz del repo, dado que `CHALLENGE.md` menciona explícitamente `PROMPTS.md` como entregable buscado por el evaluador.
+
+---
+
+## Prompt 75
+
+**Usuario:**
+> me pasa esto, por que? [error de git push: "remote: Repository not found. fatal: repository 'https://github.com/aanddy36/belozfi-prueba.git/' not found"]
+
+**Respuesta:**
+Se verificó el remoto, status y commits locales, y se planteó como hipótesis inicial que el repo remoto no existiera todavía.
+
+---
+
+## Prompt 76
+
+**Usuario:**
+> ya existe el repo, y ya hice git init / git add README.md / git commit -m "first commit" / git branch -M main / git remote add origin ..., por que falla asi?
+
+**Respuesta:**
+Se revisó `gh auth status` y se encontró la causa real: la sesión estaba autenticada como la cuenta de GitHub `afdelchiaro`, pero el repo remoto pertenece a la cuenta `aanddy36` — una distinta. GitHub devuelve "Repository not found" en vez de un error de permisos cuando la cuenta autenticada no tiene acceso. Se dieron dos soluciones: re-loguear `gh` con la cuenta correcta, o cambiar el remoto a un repo bajo `afdelchiaro`.
+
+---
+
+## Prompt 77
+
+**Usuario:**
+> vale, mira la estructura que elegi. Ahora, necesito que me crees los specs para dividir el proyecto y realizarlo. Quiero que el primero fijo consista en levantar el frontend, backend y db base... Tambien, debe incluir un archivo que levante frontend, backend y db en localhost... Una vez hecho esto, el spec debe incluir el flujo de conectarse a Netlify, Render y Supabase... El resto de specs si los puedes hacer con el funcionamiento como tal
+
+**Respuesta:**
+Se revisó la estructura real del proyecto (`.ai/prompts.md`, `specs/product/` con los 3 docs, `backend/`/`frontend/` vacíos) y se empezó a proponer la división en specs de implementación.
+
+---
+
+## Prompt 78
+
+**Usuario:**
+> no te aclare algo. Los specs crealos enumerados. Ej: 0-infrastructure, o el nombre que sea. Y a cada uno solo agregale el requirements.md por ahora.
+
+**Respuesta:**
+Se ajustó el formato: cada spec como carpeta numerada con un `requirements.md` adentro, en vez de archivos sueltos.
+
+---
+
+## Prompt 79
+
+**Usuario:**
+> antes de crearlos, sugieremelos por aqui, y dime que seccion pondrias en cada uno resumido
+
+**Respuesta:**
+Se propusieron 8 specs (0-infrastructure, 1-database, 2-accounts-cards-api, 3-collateral-purchases-payments-api, 4-frontend-auth-home, 5-frontend-modals, 6-frontend-card-management, 7-frontend-transactions), con un resumen de qué iría en cada `requirements.md`, antes de crear los archivos.
+
+---
+
+## Prompt 80
+
+**Usuario:**
+> si quieres para el 0, lo que puedes hacer es en el frontend es un boton de Test, que llame un endpoint del backend, ese endpoint es el health y chequea la DB, si funciona, que el frontend muestre un toast de exito y ya. Asi probamos las 3 conexiones desplegadas y locales
+
+**Respuesta:**
+Se incorporó el botón "Test connection" + toast al Spec 0, y se crearon los 8 archivos `requirements.md` completos (objetivo, alcance, referencia a `infra.md`, detalle de construcción, criterios de aceptación) bajo `specs/engineering/`.
+
+---
+
+## Prompt 81
+
+**Usuario:**
+> vale, agrega un octavo que sea para crear el .yaml en el backend de cada servicio asincrono, asi no sean desplegados
+
+**Respuesta:**
+Se creó el Spec 8 (`8-async-jobs-iac`): templates YAML (AWS SAM/CloudFormation) para Extractos, Intereses y Mora en `backend/iac/`, sin desplegarlos, con Lambdas stub y criterios de aceptación centrados en validez sintáctica y cobertura de los recursos documentados en `infra.md`.
+
