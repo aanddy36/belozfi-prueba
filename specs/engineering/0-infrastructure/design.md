@@ -1,16 +1,11 @@
 # Spec 0 — Design
 
-## 0. Postgres local (lo corrés vos en pgAdmin)
+## 0. Postgres local
 
-```sql
-CREATE ROLE acme_app WITH LOGIN PASSWORD 'CHANGE_ME';
-CREATE DATABASE acme_credit OWNER acme_app;
-GRANT ALL PRIVILEGES ON DATABASE acme_credit TO acme_app;
-```
+Para este MVP se usa directo el superusuario `postgres` (creado al instalar Postgres) contra una base de datos `acme_app` creada manualmente desde pgAdmin — sin crear un role de aplicación aparte, para mantenerlo simple en desarrollo local.
 
-Poné tu propia contraseña en vez de `CHANGE_ME`. Con eso arma tu connection string:
 ```
-postgresql://acme_app:TU_PASSWORD@localhost:5432/acme_credit
+postgresql://postgres:TU_PASSWORD@localhost:5432/acme_app
 ```
 
 Postgres local corre en el puerto default (5432), instalación detectada en `/Library/PostgreSQL/18`.
@@ -106,7 +101,7 @@ def health(db: Session = Depends(get_db)):
 ### `.env.example` (backend)
 
 ```
-DATABASE_URL=postgresql://acme_app:CHANGE_ME@localhost:5432/acme_credit
+DATABASE_URL=postgresql://postgres:CHANGE_ME@localhost:5432/acme_app
 ```
 
 ## 2. Frontend

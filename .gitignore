@@ -1,0 +1,12 @@
+.DS_Store
+
+# backend
+backend/venv/
+backend/.env
+backend/__pycache__/
+backend/**/__pycache__/
+*.pyc
+
+# frontend (see frontend/.gitignore for the rest)
+frontend/node_modules/
+frontend/dist/
