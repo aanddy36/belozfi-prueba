@@ -37,9 +37,9 @@ Diseño completo en `specs/product/infra.md`, sección "1. Frontend" (ruta `/car
 
 ## Criterios de aceptación
 
-- [ ] El toggle de Freeze refleja el estado real de `cards.status` y lo cambia correctamente.
-- [ ] "View details" muestra los 4 datos sensibles y el botón cambia a "Hide details" con el ícono correcto; volver a hundirlo oculta los datos.
-- [ ] "Add collateral" con éxito aumenta el cupo total de la cuenta (verificable al volver a la Home).
-- [ ] "Cancel card" con deuda pendiente muestra el error y no cierra la cuenta.
-- [ ] "Cancel card" con deuda en $0 cierra la cuenta y libera la garantía — la Home vuelve a mostrar la silueta de "Create card".
-- [ ] La sección "Collateral deposited" muestra todos los depósitos (iniciales y adicionales), con su estado correcto.
+- [x] El toggle de Freeze refleja el estado real de `cards.status` y lo cambia correctamente.
+- [x] "View details" muestra los 4 datos sensibles y el botón cambia a "Hide details" con el ícono correcto; volver a hundirlo oculta los datos.
+- [x] "Add collateral" con éxito aumenta el cupo total de la cuenta (verificable al volver a la Home).
+- [x] "Cancel card" con deuda pendiente muestra el error y no cierra la cuenta.
+- [x] "Cancel card" con deuda en $0 cierra la cuenta y libera la garantía — la Home vuelve a mostrar la silueta de "Create card".
+- [x] La sección "Collateral deposited" muestra todos los depósitos (iniciales y adicionales), con su estado correcto.

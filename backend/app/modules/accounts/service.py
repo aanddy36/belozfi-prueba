@@ -12,6 +12,7 @@ from app.modules.accounts.model import Account
 from app.modules.cards.model import Card
 from app.modules.collateral.model import CollateralDeposit
 from app.modules.purchases.model import Purchase
+from app.shared.utils.account_lookup import find_account_by_user
 from app.shared.utils.collateral_confirmation import confirm_pending_deposits
 from app.shared.utils.ledger import record_ledger_entry
 from app.shared.utils.locking import lock_account_by_user
@@ -25,7 +26,9 @@ def create_account(db: Session, user_id: UUID, deposit_amount_cents: int) -> Acc
     if deposit_amount_cents < MIN_DEPOSIT_CENTS:
         raise AppError(400, "VALIDATION_ERROR", "El depósito mínimo es de $1.000")
 
-    if db.query(Account).filter_by(user_id=user_id).first():
+    # Una cuenta `closed` no cuenta para este chequeo — permite crear una tarjeta
+    # nueva después de cancelar la anterior (Spec 6).
+    if find_account_by_user(db, user_id):
         raise AppError(409, "ACCOUNT_ALREADY_EXISTS", "Ya existe una cuenta para este usuario")
 
     account = Account(user_id=user_id, status="pending_collateral")
@@ -53,7 +56,7 @@ def _generate_card_number() -> str:
 
 
 def get_account_me(db: Session, user_id: UUID) -> Optional[dict]:
-    account = db.query(Account).filter_by(user_id=user_id).first()
+    account = find_account_by_user(db, user_id)
     if not account:
         return None
 
@@ -106,8 +109,9 @@ def _minimum_payment(current_debt_cents: int) -> int:
 def _resolve_display_status(
     account: Account, card: Card, current_debt_cents: int, payment_due_date: date, today: date
 ) -> str:
-    if account.status == "closed":
-        return "Cancelled"
+    # `account.status == "closed"` nunca llega acá: find_account_by_user ya lo filtra
+    # en get_account_me, así que "Cancelled" quedó inalcanzable en la práctica (una
+    # cuenta cerrada es invisible para este endpoint, ver account_lookup.py).
     if card.status == "inactive":
         return "Pending"
     if card.status == "frozen":

@@ -12,3 +12,10 @@ export function createAccount(depositAmountCents: number): Promise<{ id: string;
     body: JSON.stringify({ deposit_amount_cents: depositAmountCents }),
   })
 }
+
+export function closeAccount(): Promise<{ id: string; status: string }> {
+  return apiFetch('/accounts/close', {
+    method: 'POST',
+    headers: { 'Idempotency-Key': generateIdempotencyKey() },
+  })
+}

@@ -4,7 +4,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.core.errors import AppError
-from app.modules.accounts.model import Account
+from app.shared.utils.account_lookup import find_account_by_user
 
 _UNION_QUERY = text(
     """
@@ -28,7 +28,7 @@ _COUNT_QUERY = text(
 
 
 def list_transactions(db: Session, user_id: UUID, page: int, page_size: int) -> dict:
-    account = db.query(Account).filter_by(user_id=user_id).first()
+    account = find_account_by_user(db, user_id)
     if not account:
         raise AppError(404, "ACCOUNT_NOT_FOUND", "No existe una cuenta para este usuario")
 

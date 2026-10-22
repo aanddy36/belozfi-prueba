@@ -1,5 +1,6 @@
 import { BrowserRouter, Route, Routes } from 'react-router-dom'
 import { PageShell } from '@/common/components/PageShell'
+import { CardPage } from './pages/Card'
 import { HomePage } from './pages/Home'
 import { LoginPage } from './pages/Login'
 import { TestConnectionPage } from './pages/TestConnectionPage'
@@ -10,6 +11,7 @@ export function AppRouter() {
       <Routes>
         <Route path="/" element={<LoginPage />} />
         <Route path="/home" element={<HomePage />} />
+        <Route path="/card" element={<CardPage />} />
         <Route path="/test-connection" element={<TestConnectionPage />} />
         <Route path="*" element={<NotFoundPage />} />
       </Routes>

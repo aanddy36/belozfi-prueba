@@ -3,13 +3,13 @@ from uuid import UUID
 from sqlalchemy.orm import Session
 
 from app.core.errors import AppError
-from app.modules.accounts.model import Account
 from app.modules.cards.model import Card
 from app.shared.models.user import User
+from app.shared.utils.account_lookup import find_account_by_user
 
 
 def freeze_card(db: Session, user_id: UUID, frozen: bool) -> Card:
-    account = db.query(Account).filter_by(user_id=user_id).first()
+    account = find_account_by_user(db, user_id)
     if not account:
         raise AppError(404, "ACCOUNT_NOT_FOUND", "No existe una cuenta para este usuario")
 
@@ -24,7 +24,7 @@ def freeze_card(db: Session, user_id: UUID, frozen: bool) -> Card:
 
 
 def get_card_details(db: Session, user_id: UUID) -> dict:
-    account = db.query(Account).filter_by(user_id=user_id).first()
+    account = find_account_by_user(db, user_id)
     if not account:
         raise AppError(404, "ACCOUNT_NOT_FOUND", "No existe una cuenta para este usuario")
 

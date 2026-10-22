@@ -29,12 +29,16 @@ export function HomePage() {
     refetchInterval: (query) => (query.state.data?.card.display_status === 'Pending' ? 1500 : false),
   })
 
+  // El grid/Pay/movimientos se ven apenas la tarjeta se activó (Active o Frozen) — congelar
+  // solo bloquea compras nuevas, no ver el estado de la cuenta ni pagar la deuda.
+  const cardActivated = account?.card.status !== 'inactive'
+  // "Simulate purchase" sí queda estrictamente para Active (no tiene sentido comprar frozen).
   const isActive = account?.card.display_status === 'Active'
 
   const { data: transactions } = useQuery({
     queryKey: ['transactions', 'home'],
     queryFn: () => listTransactions(1, 6),
-    enabled: isActive,
+    enabled: cardActivated,
   })
 
   return (
@@ -52,12 +56,15 @@ export function HomePage() {
 
         {account && (
           <>
-            <CreditCardView
-              displayStatus={account.card.display_status}
-              currentDebtCents={account.current_debt_cents}
-            />
+            <Link to="/card" className="group block w-full max-w-md">
+              <CreditCardView
+                displayStatus={account.card.display_status}
+                currentDebtCents={account.current_debt_cents}
+                interactive
+              />
+            </Link>
 
-            {isActive && (
+            {cardActivated && (
               <div className="w-full space-y-6">
                 <AccountGrid
                   availableCreditCents={account.account.available_credit_cents}
@@ -67,7 +74,11 @@ export function HomePage() {
                   paymentDueDate={account.payment_due_date}
                 />
 
-                <Button onClick={() => setPayOpen(true)} className="w-full">
+                <Button
+                  onClick={() => setPayOpen(true)}
+                  disabled={account.current_debt_cents === 0}
+                  className="w-full"
+                >
                   Pay
                 </Button>
 
@@ -91,15 +102,18 @@ export function HomePage() {
 
       <CreateCardModal open={isCreateCardOpen} onOpenChange={setCreateCardOpen} />
 
+      {account && cardActivated && (
+        <PayModal
+          open={isPayOpen}
+          onOpenChange={setPayOpen}
+          minimumPaymentCents={account.minimum_payment_cents}
+          currentDebtCents={account.current_debt_cents}
+        />
+      )}
+
       {account && isActive && (
         <>
           <SimulatePurchaseButton onClick={() => setPurchaseOpen(true)} />
-          <PayModal
-            open={isPayOpen}
-            onOpenChange={setPayOpen}
-            minimumPaymentCents={account.minimum_payment_cents}
-            currentDebtCents={account.current_debt_cents}
-          />
           <SimulatePurchaseModal
             open={isPurchaseOpen}
             onOpenChange={setPurchaseOpen}

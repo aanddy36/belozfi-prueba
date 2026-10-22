@@ -48,3 +48,14 @@ Todos los datos de prueba se borraron al terminar cada corrida — la DB local q
 ## No aplica
 
 No quedó ningún criterio de aceptación sin probar en este spec — a diferencia de Spec 2, acá sí había un escenario de negocio real (compras concurrentes sobre el mismo cupo) para forzar la prueba de concurrencia.
+
+## Addendum (post Spec 6): cuentas `closed` ahora son invisibles en todas las búsquedas por `user_id`
+
+Al diseñar "Cancel card" (Spec 6) se encontró que, al no haber un `UNIQUE` en `accounts.user_id` (Spec 1), permitir "cancelar y volver a crear una tarjeta" requiere que **toda** búsqueda de "la cuenta del usuario" ignore las filas `closed` — si no, una cuenta vieja cancelada podía interferir con la nueva (o el usuario quedaba bloqueado para siempre al intentar crear otra).
+
+Se centralizó en `app/shared/utils/account_lookup.py` (`find_account_by_user`, nuevo) y se reemplazaron los 3 `db.query(Account).filter_by(user_id=user_id).first()` de este spec:
+- `cards/service.py` — `freeze_card`, `get_card_details`.
+- `collateral/service.py` — `create_collateral_deposit` (se sacó el chequeo `if account.status == "closed": raise ACCOUNT_CLOSED`, que quedó inalcanzable — una cuenta cerrada ahora da `404 ACCOUNT_NOT_FOUND` directo, antes de llegar a ese chequeo), `list_collateral_deposits`.
+- `transactions/service.py` — `list_transactions`.
+
+Detalle completo de la decisión y la verificación (con rollback, sin tocar datos reales) en el `worklog.md` de Spec 2.

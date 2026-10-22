@@ -1367,3 +1367,127 @@ Se explicó que es el comportamiento correcto, no un bug: `installment_plan` sol
 **Respuesta:**
 Se marcaron como cumplidos los criterios de aceptación de `requirements.md` de Specs 4 y 5 (dejando sin marcar el único no alcanzable todavía: los estados `Frozen`/`Overdue`/`Cancelled`, que dependen de la página `/card` del Spec 6). Se actualizó el estado de ambos `worklog.md` a "completo", documentando la ronda final de ajustes de UX (Home, `TransactionsList`, estados de carga, toasts), el incidente de HMR (no un bug de producto), y la aclaración de negocio sobre la deuda en cuotas. Se actualizó este archivo (`prompts.md`) y se procedió al commit.
 
+---
+
+## Prompt 130
+
+**Usuario:**
+> haz el design del spec 6
+
+**Respuesta:**
+Al revisar `requirements.md` de Spec 6 contra el backend ya implementado, se encontró un gap real: `create_account` chequea si existe una fila de `accounts` para el `user_id` **sin filtrar por status** — una vez cancelada una cuenta (`closed`), esa fila bloquea para siempre la creación de una nueva (`409 ACCOUNT_ALREADY_EXISTS`), contradiciendo lo que `requirements.md` de Spec 6 ya decía ("la Home vuelve a mostrar la silueta de Create card" tras cancelar). Se intentó preguntar con la herramienta de preguntas y el usuario la rechazó.
+
+---
+
+## Prompt 131
+
+**Usuario:**
+> pero como asi que una vez cerrada una no se peude crear otra?
+
+**Respuesta:**
+Se explicó en el chat (no con la herramienta de preguntas) el bug exacto con el código: la fila `closed` sigue existiendo en la DB (cancelar no borra la cuenta), y el chequeo de `create_account` la encuentra igual. Se preguntó directamente: ¿debería poder crear una tarjeta nueva después de cancelar, o el cierre es definitivo?
+
+---
+
+## Prompt 132
+
+**Usuario:**
+> sí, permitir crear una nueva después de cancelar. Como manejamos eso? en backend es sencillo, se verifica que diga closed. Pero en el frontend como hacemos?
+
+**Respuesta:**
+Se encontró que el problema no era solo `create_account`/`get_account_me` — **8 lugares** en todo el backend (Specs 2 y 3: `cards`, `collateral`, `transactions`, `locking`) buscan "la cuenta del usuario" por `user_id` sin excluir `closed`, todos con el mismo riesgo. Se centralizó en un helper nuevo (`app/shared/utils/account_lookup.py`, `find_account_by_user`) y se reemplazaron los 8 call sites; se sacó un chequeo de `ACCOUNT_CLOSED` en `collateral/service.py` y el branch `"Cancelled"` en `_resolve_display_status` de `accounts/service.py`, ambos ya inalcanzables con el nuevo filtro. Se respondió explícitamente que el frontend **no necesita ningún cambio** — `Home.tsx` ya maneja `data: null` correctamente desde el fix anterior, así que cancelar + volver a `/home` ya muestra la silueta de "Create card" sola.
+
+Al verificar el fix se cometió un error real: un primer test (con `rollback()`) fue seguro, pero un segundo test llamó a `accounts_service.create_account` directamente, sin saber que esa función hace su propio `commit()` interno — **comiteó por accidente** el cierre de la cuenta real del usuario (con su garantía de $20.000) y la creación de una cuenta de prueba. Se detectó enseguida, se restauró la cuenta real a su estado exacto (status, `collateral_cents`) y se borró la cuenta de prueba, verificando contra `GET /accounts/me` y `GET /transactions` reales que los 8 movimientos de prueba del usuario seguían intactos. Se le avisó inmediatamente al usuario, con el error explicado sin minimizarlo.
+
+---
+
+## Prompt 133
+
+**Usuario:**
+> sí, segui con el design del spec 6
+
+**Respuesta:**
+Se documentó el fix de `find_account_by_user` como addendum en los `worklog.md` de Spec 2 (detalle completo: el gap, la decisión, el código, el incidente de testing y su recuperación) y Spec 3 (referencia + los 3 call sites de ese spec). Se escribió `design.md` del Spec 6 completo: extensión de `CreditCardView` para la "cara de detalles" (número/titular/exp/cvc reemplazando logo/Mastercard/deuda, "Credit"+bolita siempre visibles), 5 Historias de Usuario (freeze toggle, view/hide details, add collateral, cancel card, lista de depósitos) reusando el patrón de modal del Spec 5, `pages/Card.tsx` componiendo todo, y la conexión desde la Home (la tarjeta pasa a ser un link a `/card`).
+
+---
+
+## Prompt 134
+
+**Usuario:**
+> dale, implementalo
+
+**Respuesta:**
+Se implementó el Spec 6 completo siguiendo el `design.md`: componente `switch` de shadcn, tipos (`CardDetails`, `CollateralDeposit`), services (`cardsService`, `collateralService`, `closeAccount` agregado a `accountsService`), extensión de `CreditCardView` con el prop `details`, los 4 componentes nuevos (`FreezeToggle`, `AddCollateralModal`, `CollateralDepositsList`, `CancelCardModal`), `pages/Card.tsx`, y la conexión router + Home (la tarjeta ahora es un link a `/card`). Build limpio.
+
+Para probar sin repetir el incidente del prompt anterior, se verificaron **solo los endpoints de lectura** (`GET /cards/me/details`, `GET /collateral-deposits`) contra la cuenta real del usuario, sin ejecutar ninguna mutación (freeze/add collateral/cancel quedaron explícitamente sin probar por este agente) — se escribió `worklog.md` dejando esas 3 acciones pendientes de que el usuario las pruebe él mismo en el navegador, y ningún criterio de aceptación se marcó como cumplido todavía.
+
+---
+
+## Prompt 135
+
+**Usuario:**
+> me gusta la transicion, pero la tarjeta sigue sin el efecto de hover. Una segunda cosa, en el Header, haz que el icono tenga tambien el nombre, o sea que sea icono y Acme Credit al lado
+
+**Respuesta:**
+Se identificó que `hover:` directo sobre la tarjeta (envuelta en un `<Link>`, elemento `inline` por default) no se notaba — se cambió al patrón `group`/`group-hover` (el mismo ya confirmado funcionando en "Create card"), con un efecto más marcado (`-translate-y-1`, `shadow-2xl`). Se agregó el texto "Acme Credit" al lado del logo en el header de `PageShell`.
+
+---
+
+## Prompt 136
+
+**Usuario:**
+> 1.cuando esta frozen por que no muestra el grid y las transacciones? no hay razon por la que no 2. el toggle de frozen debe tener un estilo menos blanco y un efecto de hover, porque parece desaactivado asi. 3. El cancel card debe ir a la derecha, no en el centro. 4. El toggle de frozen debe tener el cursor pointer tambien. 5. En la lista de collateral deposits, agrega un circulo con el color del estado, entonces si es pending amarillo, confirmed verde y denied rojo. Como el estado de las tarjetas.
+
+**Respuesta:**
+5 fixes: (1) el grid/Pay/movimientos de la Home pasaron a depender de `cardActivated` (`card.status !== 'inactive'`, o sea `Active` o `Frozen`) en vez de solo `Active` — congelar únicamente debía bloquear compras nuevas, no ver el estado de la cuenta; el botón "+"/Simulate purchase sí se mantuvo estrictamente en `Active`. (2) y (4) se ajustó el componente `Switch` compartido: track más oscuro (`bg-gray-300` en vez del gris casi blanco de shadcn) con hover, y `cursor-pointer`. (3) se reordenaron los 3 botones de `/card` (View details / Add collateral / Cancel card). (5) se agregó un círculo de color por estado en `CollateralDepositsList` (amarillo `pending`, verde `confirmed` — el sistema no tiene un estado "denied" para depósitos, no se agregó).
+
+---
+
+## Prompt 137
+
+**Usuario:**
+> 1. al estar frozen, puedes agregar garantias? 2. si esta frozen, puedes pagar deudas? actualmente sale error, pero la UI deja hacerlo, si no se puede por diseno, debe aparecer deshabilitado el boton pagar
+
+**Respuesta:**
+Se revisó el código real de `collateral/service.py` y `payments/service.py`: ninguno de los dos chequea `card.status`/`account.status` (más allá de que la cuenta no esté `closed`) — por diseño, ambas acciones ya deberían poder hacerse estando `frozen`, sin ningún bloqueo en el código. Se le avisó al usuario que no se encontró ninguna razón en el código para el error que vio con "Pay", y se preguntó el mensaje/código exacto antes de asumir que había que deshabilitar el botón.
+
+---
+
+## Prompt 138
+
+**Usuario:**
+> okay, frozen lo unico que te impide es comprar con la tarjeta. Ahora, haz que abajo izq siga saliendo la deuda, ya que se puede seguir pagando deudas. Ahora, si la deuda es 0, deberia salir deshabilitado el boton de Pay, por eso fue el error que me dio
+
+**Respuesta:**
+Se identificó la causa real: `CreatePaymentRequest.amount_cents` exige `Field(gt=0)` en el backend — con deuda $0, "Full payment"/"Minimum payment" resuelven a $0 y ese monto siempre falla la validación del schema. Se cambió `CreditCardView` para mostrar "Current debt" en cualquier estado que no sea `Pending` (antes solo en `Active`), y se deshabilitó el botón "Pay" de la Home cuando `current_debt_cents === 0`.
+
+---
+
+## Prompt 139
+
+**Usuario:**
+> haz que los botones deshabilitados tengan el cursos disabled
+
+**Respuesta:**
+Se encontró que `button.tsx` ya tenía `disabled:cursor-not-allowed`, pero también `disabled:pointer-events-none` — con `pointer-events: none` el navegador ignora el elemento al calcular qué cursor mostrar, así que `cursor-not-allowed` nunca se veía. Se sacó `disabled:pointer-events-none` (redundante igual, el atributo `disabled` nativo ya bloquea los clicks). Se confirmó que `Switch` no tenía el mismo problema (su `pointer-events-none` está en el thumb decorativo, no en el track).
+
+---
+
+## Prompt 140
+
+**Usuario:**
+> haz que el boton de cancell card, el de confirmar que es rojo, sea bg rojo y text blanco
+
+**Respuesta:**
+Se confirmó que `variant="destructive"` solo se usaba en ese botón en toda la app, así que se cambió directo en el componente compartido: de `bg-destructive/10 text-destructive` (rojo clarito, texto rojo) a `bg-destructive text-white hover:bg-destructive/90` (rojo sólido, texto blanco).
+
+---
+
+## Prompt 141
+
+**Usuario:**
+> listo, funciona todo bien. Prompts y commit
+
+**Respuesta:**
+Se marcaron como cumplidos los 6 criterios de aceptación de `requirements.md` de Spec 6 (freeze, view/hide details, add collateral, cancel card con/sin deuda, lista de depósitos) y se actualizó `worklog.md` a estado "completo", documentando toda la ronda de ajustes de esta sesión (hover, header, grid/Pay visibles en `Frozen`, estilos de `Switch`/`Button` compartidos, deuda visible fuera de `Active`, "Pay" deshabilitado en $0, color del botón de cancelar). Se actualizó este archivo (`prompts.md`) y se procedió al commit.
+

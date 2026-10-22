@@ -79,3 +79,19 @@ Al probar el Spec 5 en el navegador real, se cuestionó el diseño original: dev
 Se encontró de paso un problema de compatibilidad al aplicar el fix: el venv local corre Python 3.9 (no 3.12 como el `.python-version` fijado para Render en el Spec 0), y la sintaxis `dict | None` de tipos (PEP 604) no es válida en runtime antes de 3.10 — se usó `Optional[dict]` de `typing` en su lugar, consistente con el resto del código base que ya usaba `Optional` (ej. `app/core/errors.py`).
 
 Verificado contra el backend real: `GET /accounts/me` sin cuenta → `{"statusCode":200,"message":"No account yet","data":null}`.
+
+## Addendum (post Spec 6): se puede crear una cuenta nueva después de cancelar la anterior
+
+Al diseñar "Cancel card" (Spec 6) se encontró un gap real: `create_account` chequeaba `db.query(Account).filter_by(user_id=user_id).first()` **sin filtrar por status** — una vez que existía una fila `closed` (de una cancelación previa), ese chequeo la encontraba igual y bloqueaba con `409 ACCOUNT_ALREADY_EXISTS` para siempre, sin ninguna forma de volver a crear una tarjeta. Lo mismo afectaba a `get_account_me`: devolvería la cuenta `closed` en vez de `data: null`, así que la Home nunca volvería a mostrar la silueta de "Create card" tras cancelar — contradiciendo lo que ya decía `requirements.md` de Spec 6.
+
+**Decisión** (confirmada con el usuario): sí permitir recrear. Como no hay `UNIQUE` en `accounts.user_id` (Spec 1, intencional), un usuario puede terminar con varias filas de `accounts` a lo largo del tiempo — una `closed` vieja y, eventualmente, una nueva vigente. El fix no es solo en `get_account_me`/`create_account`: **cualquier** lugar del backend que busque "la cuenta del usuario" por `user_id` tenía el mismo riesgo. Se encontraron 8 call sites en total (Specs 2 y 3) y se centralizó la lógica en un helper nuevo:
+
+```python
+# app/shared/utils/account_lookup.py
+def find_account_by_user(db: Session, user_id: UUID) -> Optional[Account]:
+    return db.query(Account).filter_by(user_id=user_id).filter(Account.status != "closed").first()
+```
+
+Se reemplazaron los usos en este spec: `accounts/service.py` (`create_account`, `get_account_me`), y `locking.py` (`lock_account_by_user`, que necesita su propio `.with_for_update()` así que no reusa el helper, pero agrega el mismo filtro). El chequeo `if account.status == "closed": return "Cancelled"` dentro de `_resolve_display_status` quedó inalcanzable (una cuenta `closed` ya no llega nunca a esa función) — se sacó y se dejó un comentario explicando por qué. En la práctica, `Cancelled` pasa a ser un estado de `display_status` que nunca se renderiza (similar a cómo `mora`/`Overdue` ya eran parcialmente inalcanzables, `infra.md` sección 4).
+
+**Verificado sin tocar datos reales**: como el usuario ya tenía una cuenta real de prueba (de probar Specs 4/5 en el navegador), la verificación se hizo con un `rollback()` explícito — se marcó la cuenta real como `closed` dentro de una transacción sin comitear, se confirmó que `find_account_by_user` la ignoraba, y se descartó el cambio. Un segundo intento (llamando a `accounts_service.create_account` directamente) reveló que esa función hace su propio `commit()` interno, lo que **comiteó por accidente** el cierre de la cuenta real + la creación de una cuenta de prueba — error de metodología, no del código. Se detectó enseguida, se restauró la cuenta real a su estado exacto anterior (`status`, `collateral_cents`) y se borró la cuenta de prueba; se confirmó contra `GET /accounts/me` y `GET /transactions` reales que no se perdió nada (los 8 movimientos de prueba del usuario seguían intactos).
