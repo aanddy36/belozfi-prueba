@@ -1059,3 +1059,59 @@ Se corrió un test funcional completo contra Postgres local: como no había `htt
 
 La prueba del escenario 18 reveló un bug real: una `Idempotency-Key` enviada con un body inválido (422) queda trabada en `processing` para siempre, porque el error ocurre antes de que el `try/except` del controller pueda liberarla — un reintento futuro con la misma key (body corregido) quedaría bloqueado sin salida. Se arregló agregando un timeout de 30s de "stale" en `require_idempotency_key`: una key en `processing` por más de ese tiempo se trata como abandonada y se permite reintentar. Se verificó insertando manualmente una key fresca (bloquea, `409`) y una de 40s (se deja pasar, llega al negocio). Se actualizaron `design.md`/`requirements.md` con el fix, se borraron todos los datos de prueba de la DB local (quedó solo el seed de John Doe), y se escribió `worklog.md` del Spec 2 documentando todo lo hecho, probado, el bug encontrado, y el único criterio de aceptación no probado (concurrencia real — no hay un escenario con impacto de negocio dentro de Accounts/Cards para forzarlo, se prueba de verdad en Spec 3).
 
+---
+
+## Prompt 101
+
+**Usuario:**
+> haz commit, no push
+
+**Respuesta:**
+Se revisó `git status` (21 archivos esperados del Spec 2, sin nada fuera de lugar), se agregaron explícitamente por nombre y se hizo el commit `e9211c0` ("feat: Spec 2 - Accounts & Cards API"), sin push.
+
+---
+
+## Prompt 102
+
+**Usuario:**
+> agregaste los prompts al prompts.md?
+
+**Respuesta:**
+Se confirmó que los prompts 97-100 ya estaban agregados y habían entrado en el commit `e9211c0` (`.ai/prompts.md` figuraba como `modified` en ese commit). Se agregó el prompt 101 (el pedido de commit) que faltaba, y este mismo prompt 102.
+
+---
+
+## Prompt 103
+
+**Usuario:**
+> me parece bien el spec 3, puedes hacer el design
+
+**Respuesta:**
+Se revisó `requirements.md` del Spec 3 (sin tocar desde que se creó, antes de todos los refinamientos de Spec 2) contra `infra.md` y contra la infraestructura ya construida — le faltaba el catálogo de códigos de error (no tenía ninguno) y algunas precisiones (umbral de depósito reusado, qué pasa con interés/capital al pagar, formato de paginación). Se agregó, sin cambiar nada de lo ya aprobado: catálogo de 4 códigos nuevos (`ACCOUNT_CLOSED`, `INSUFFICIENT_CREDIT`, `PAYMENT_EXCEEDS_DEBT`, `PAYMENT_BELOW_MINIMUM`) más 5 reusados de Spec 2, y la regla general de cuándo usar `400 VALIDATION_ERROR` (umbral fijo, independiente del estado) vs `409` con código específico (choca con el estado financiero actual de la cuenta).
+
+Se escribió `design.md` completo: 5 Historias de Usuario (HU-3.1 a HU-3.5 — agregar garantía, ver depósitos, simular compra, pagar deuda, ver movimientos) con narrativa, reglas de negocio, contrato y código de `schema.py`/`service.py`/`controller.py`/`route.py` de los 4 módulos (`collateral`, `purchases`, `payments`, `transactions` — este último sin `model.py` propio, es una consulta `UNION ALL` sobre `purchases`+`payments`, no una tabla). Se detalló el reparto FIFO de pagos (interés antes que capital dentro de cada compra, aunque en la práctica el interés siempre es 0) y la regla de que solo la porción de capital pagada restaura `available_credit_cents`. Se dejó una nota explícita sobre cómo probar la concurrencia real pedida en los criterios de aceptación (requests HTTP en paralelo, no secuenciales).
+
+---
+
+## Prompt 104
+
+**Usuario:**
+> dale, implementalo en el backend
+
+**Respuesta:**
+Se crearon los 4 módulos completos de `design.md`: `collateral` (`schema`/`service`/`controller`/`route.py`, reusando el mínimo de $1.000 y `confirm_pending_deposits` de Spec 2), `purchases` (con `installment_plan` como `Literal[1,3,6,12]` de Pydantic), `payments` (reparto FIFO, restauración de solo la porción de capital), y `transactions` (módulo nuevo, sin `model.py` ni `schema.py` — solo consulta `UNION ALL`). Se registraron los 4 routers en `app/main.py`.
+
+Se probó todo contra Postgres local con `uvicorn` + `curl`: validaciones de depósito/compra/pago, tarjeta congelada bloqueando compras, `installment_plan`/`merchant_name` inválidos devolviendo 422 de Pydantic, cupo y deuda recalculándose correctamente en cada paso, idempotencia cacheando reintentos. Se hizo una prueba específica (no estaba en la corrida general) de un solo pago repartido entre **dos** compras distintas, confirmando directo en la tabla `payment_allocations` que generó 2 filas con el reparto FIFO correcto (la más antigua se salda completa antes de tocar la siguiente). Se corrió además la prueba de **concurrencia real** que Spec 2 había dejado pendiente: con `ThreadPoolExecutor` + `http.client` se dispararon 2 `POST /purchases` en paralelo por $1.500 contra un cupo de $2.500 — exactamente una pasó (`200`) y la otra fue rechazada (`409 INSUFFICIENT_CREDIT`), confirmando que el lock serializa las transacciones correctamente.
+
+Se encontró (no un bug, un comportamiento a documentar) que la confirmación lazy de depósitos no se dispara en `POST /purchases`/`POST /payments`, solo en los 2 endpoints `GET` que la mencionan explícitamente — una compra intentada sin pasar antes por `GET /accounts/me` ve la cuenta todavía como `pending_collateral` aunque hayan pasado los 10s. Se limpiaron todos los datos de prueba de la DB local en cada corrida, se marcaron los 7 criterios de aceptación como cumplidos en `requirements.md`, y se escribió `worklog.md` del Spec 3 con todo el detalle.
+
+---
+
+## Prompt 105
+
+**Usuario:**
+> antes agrega el prompt, y ahi commiteas
+
+**Respuesta:**
+Se agregó este prompt (el presente) a `prompts.md` antes de proceder al commit del Spec 3.
+
