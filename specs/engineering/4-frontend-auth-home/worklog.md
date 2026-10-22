@@ -1,6 +1,6 @@
 # Spec 4 — Worklog
 
-## Estado: implementado, verificación visual parcial. No se pudo probar el estado `Active` de la Home (grid + movimientos) porque crear una cuenta real requiere el modal del Spec 5, todavía no construido. Se termina de verificar ahí.
+## Estado: completo. El usuario verificó visualmente todo (incluido el estado `Active` de la Home) al probar el Spec 5 de punta a punta.
 
 ## Hecho
 
@@ -40,13 +40,16 @@
 - Las 3 rutas reales sirven `200` (`/`, `/home`, `/test-connection`).
 - `GET /accounts/me` contra el backend real devuelve `404 ACCOUNT_NOT_FOUND` (no hay cuenta todavía) — confirma que la rama `CreateCardPlaceholder` de la Home se ejercita contra datos reales, no solo en el código.
 
-## No probado (pendiente, se cierra en Spec 5)
+## No probado
 
-- **Todo lo visual** (colores, layout, el header, el logo, el "+" sobre "Create card") — no hay navegador conectado en esta sesión; el usuario lo revisó manualmente en `localhost:5173` e hizo los ajustes de este worklog a partir de lo que vio.
-- **El estado `Active` completo de la Home** (tarjeta verde, grid 2x2 con datos reales, lista de movimientos) — no se puede llegar a ese estado sin crear una cuenta real, y crearla requiere el modal de "Crear tarjeta garantizada" del Spec 5. Queda para verificar ahí, junto con el resto de los estados (`Frozen`, `Overdue`, etc.) que tampoco son alcanzables sin acciones de Spec 5/6.
+- Los estados `Frozen`/`Overdue`/`Cancelled` de la tarjeta — no son alcanzables desde la UI todavía (el toggle de freeze y "Cancel card" son la página `/card`, Spec 6). Se verifican ahí.
 
 ## Decisiones de implementación no especificadas en `infra.md`/`requirements.md`
 
 - **Logo de Acme**: no existe asset real, se usa una "A" estilizada en un badge (componente `AcmeLogo`), reusado en el header, la tarjeta y el ícono de movimientos — pedido explícito del usuario durante la sesión.
 - **Ícono de movimientos**: `infra.md` dice "logo de Acme" sin más detalle — se implementó como el mismo `AcmeLogo`.
 - **"Cardholder"/usuario actual del login**: sin backend de auth, el formulario no llama a ningún endpoint; solo navega a `/home` tras cualquier submit válido (no vacío).
+
+## Addendum (post Spec 5): `GET /accounts/me` sin cuenta ya no es `404`
+
+Lo registrado arriba (`404` → `CreateCardPlaceholder`) quedó desactualizado: se revisó en el Spec 2 (ver su `worklog.md`, "Addendum") tras probar el Spec 5 — ahora es `200` con `data: null`. `Home.tsx` se actualizó en consecuencia (ya no usa `ApiError`/`error.status === 404` para este caso, chequea directamente `!account`).

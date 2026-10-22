@@ -27,7 +27,7 @@ Todo el texto de la interfaz va en inglés, aunque la documentación del proyect
 
 ## Home
 
-- `GET /accounts/me` al cargar. Si `404` → silueta de tarjeta punteada, gris, texto "Create card" centrado, hover blanco (el click que abre el modal de creación es el Spec 5).
+- `GET /accounts/me` al cargar. Si `data: null` (`200` — no existe cuenta todavía, ver revisión post Spec 5 en Spec 2) → silueta de tarjeta punteada, gris, texto "Create card" centrado, hover blanco (el click que abre el modal de creación es el Spec 5).
 - Si existe cuenta → renderiza la tarjeta real con su estado.
 
 ### Diseño de la tarjeta
@@ -45,8 +45,8 @@ Todo el texto de la interfaz va en inglés, aunque la documentación del proyect
 
 ## Criterios de aceptación
 
-- [ ] Cualquier usuario/contraseña en Login redirige a `/home`.
-- [ ] Sin cuenta: se ve la silueta punteada con hover.
-- [ ] Con cuenta `active`: se ven los 4 datos del grid con valores reales, y los primeros 6 movimientos (o menos si hay menos).
-- [ ] El color/prioridad de la bolita de estado es correcto en todos los casos simulables (activar freeze manualmente en DB para probar `Frozen`, por ejemplo).
-- [ ] Formato de montos consistente: `$ -445,983.17`.
+- [x] Cualquier usuario/contraseña en Login redirige a `/home`.
+- [x] Sin cuenta: se ve la silueta punteada con hover.
+- [x] Con cuenta `active`: se ven los 4 datos del grid con valores reales, y los primeros 6 movimientos (o menos si hay menos).
+- [ ] El color/prioridad de la bolita de estado es correcto en todos los casos simulables (activar freeze manualmente en DB para probar `Frozen`, por ejemplo). *Verificado solo `Pending`/`Active` — `Frozen`/`Overdue`/`Cancelled` no son alcanzables todavía desde la UI (el toggle de freeze es la página `/card`, Spec 6); se termina de verificar ahí.*
+- [x] Formato de montos consistente: `$ -445,983.17`.

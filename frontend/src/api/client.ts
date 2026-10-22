@@ -22,8 +22,8 @@ export function generateIdempotencyKey(): string {
 
 export async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${API_URL}${path}`, {
-    headers: { 'Content-Type': 'application/json', ...(options?.headers ?? {}) },
     ...options,
+    headers: { 'Content-Type': 'application/json', ...(options?.headers ?? {}) },
   })
   const body = (await res.json()) as ApiEnvelope<T>
 

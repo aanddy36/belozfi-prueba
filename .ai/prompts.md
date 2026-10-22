@@ -1221,3 +1221,149 @@ Se aclaró que es el comportamiento esperado, no un bug: el modal de "crear tarj
 **Respuesta:**
 Se verificó contra el backend real que `GET /accounts/me` efectivamente devuelve `404 ACCOUNT_NOT_FOUND` (no hay cuenta cargada), confirmando que la rama `CreateCardPlaceholder` de la Home se ejercita contra datos reales y no solo en el código. Se escribió `worklog.md` del Spec 4 con estado "implementado, verificación visual parcial" — documentando todo lo hecho, lo probado (build limpio, rutas `200`, 404 real), y dejando explícito lo que queda pendiente de verificar en Spec 5 (el estado `Active` completo de la Home, y toda la apariencia visual que no se pudo confirmar por no tener navegador conectado). No se marcó ningún criterio de aceptación de `requirements.md` como cumplido, ya que ninguno se pudo verificar de punta a punta todavía.
 
+---
+
+## Prompt 116
+
+**Usuario:**
+> dale, segui con el spec 5
+
+**Respuesta:**
+Se agregaron los componentes `dialog`/`radio-group`/`select` de shadcn (declinando sobreescribir `button.tsx`, que ya tenía el fix de `cursor-pointer`). Se implementaron los 3 modales: `CreateCardModal` (conectado a la silueta de la Home), `PayModal` (3 radio buttons, validación manual del piso de $25 y el techo de la deuda total — depende de props dinámicos, no de `zod`), y `SimulatePurchaseModal` + `SimulatePurchaseButton` (botón "+" fijo, solo visible si `Active`). Los 3 services nuevos (`createAccount` ampliado, `createPayment`, `createPurchase`) generan una `Idempotency-Key` por request. Se agregó polling (`refetchInterval` de React Query, 1.5s) a la query de la cuenta mientras siga `Pending`, y el botón "Pay" entre el grid y la lista de movimientos.
+
+Se encontró un problema de tipos real al correr `npm run build`: `z.coerce.number()` de Zod 4 rompe la inferencia de `useForm`/`handleSubmit` de `react-hook-form` (tipos de entrada/salida del coerce no coinciden). Se arregló cambiando esos 2 campos a `z.string().refine(...)`, convirtiendo a número recién al llamar a la mutación. Build limpio, ambos servers corriendo, se confirmó que no hay cuenta creada todavía (para que el usuario probara el flujo completo él mismo) — se avisó explícitamente que no se pudo verificar nada de forma visual/interactiva por no tener navegador conectado.
+
+---
+
+## Prompt 117
+
+**Usuario:**
+> te falto agregar el design del 4 y 5. Lo mismo te falto el worklog del 5. Debes seguir el pipeline que estableci
+
+**Respuesta:**
+Se reconoció el salto del pipeline (requirements → design → implementar → worklog) en los Specs 4 y 5 — se había ido directo a implementar sin escribir `design.md` en ninguno de los dos, ni `worklog.md` en el 5. Se escribieron los 3 documentos faltantes, reconstruyendo el diseño a partir del código ya implementado (con el código final real, no hipotético): `design.md` del Spec 4 (fix de `tsconfig.json`, `api/client.ts`, paleta/logo, `PageShell`, tipos comunes, módulos Accounts/Transactions, páginas, router), `design.md` del Spec 5 (helper `dollarsToCents`, los 3 services con `Idempotency-Key`, las 3 HUs de los modales con su código, la integración en `Home.tsx` — conexión de la silueta, polling, botones), y `worklog.md` del Spec 5 (mismo criterio de honestidad que el del Spec 4: nada marcado como verificado hasta que el usuario pruebe la interacción real en el navegador).
+
+---
+
+## Prompt 118
+
+**Usuario:**
+> la validacion del input cambiala, que salga en rojo abajo si esta mal, no que sea el check nativo del input. Otra cosa, haz el modal mas grande y que se vea mejor, que se diferencie el titulo y que tenga espacio del label
+
+**Respuesta:**
+Se identificó que el input de depósito tenía `min={1000}` (atributo HTML nativo), que disparaba el tooltip de validación del navegador antes de que corriera el resolver de `zod` — se sacó ese atributo y se agregó `noValidate` a los 3 `<form>` de la app (Login, Create card, Simulate purchase) para que el único feedback de validación sea el mensaje en rojo debajo del campo. Se agrandó y mejoró el componente compartido `common/components/ui/dialog.tsx` (afecta a los 3 modales a la vez): más ancho (`sm:max-w-sm` → `sm:max-w-lg`), más padding (`p-4` → `p-6`), título más grande y en negrita (`text-xl font-bold`), y más espacio entre cada label y su input (`space-y-1.5` → `space-y-2`).
+
+---
+
+## Prompt 119
+
+**Usuario:**
+> [curl capturado del navegador real de un `POST /accounts` que falló con 422 "Input should be a valid dictionary or object to extract fields from", con `Content-Type: text/plain;charset=UTF-8` en vez de `application/json`]
+
+**Respuesta:**
+Se encontró el bug real a partir del curl compartido: en `api/client.ts`, `apiFetch` armaba `{ headers: {...}, ...options }` — como `options` (pasado por cada service) también trae su propio `headers` (ej. `Idempotency-Key`), el spread de `...options` **después** pisaba por completo la key `headers` ya armada, perdiendo el `Content-Type: application/json`. El navegador, sin ese header explícito y con un body string, default a `text/plain;charset=UTF-8` — y con eso FastAPI no podía parsear el body como JSON. Afectaba a todo `POST`/`PATCH` de la app, no solo a este modal; recién se manifestó ahora porque era el primer `POST` real probado desde el navegador. Se arregló invirtiendo el orden del spread (`...options` primero, `headers` después). Se verificó reproduciendo el mismo request con `Content-Type: application/json` directo contra el backend (`200`, cuenta creada), se borró esa cuenta de prueba de la DB local, y se actualizó el `worklog.md` del Spec 5 (bug, causa, fix, verificación) y el snippet de `api/client.ts` en el `design.md` del Spec 4 (que todavía mostraba la versión con el bug).
+
+---
+
+## Prompt 120
+
+**Usuario:**
+> [curl de `GET /accounts/me` devolviendo `404 ACCOUNT_NOT_FOUND`] Deberia, independiente del user y password que ponga, tomar el unico usuario que existe en db
+
+**Respuesta:**
+Se aclaró la diferencia entre "usuario" y "cuenta" en el modelo: el usuario (John Doe) siempre existe y `GET /accounts/me` ya ignora por completo el login (no hay verificación de credenciales, `get_current_user` siempre trae el único registro de `users`). El `404` es sobre la **cuenta** (la tarjeta/cupo), que todavía no se creó — comportamiento esperado antes de pasar por "Create card", no un bug. Se confirmó contra la DB real: 1 usuario, 0 cuentas.
+
+---
+
+## Prompt 121
+
+**Usuario:**
+> pero no entiendo, el me por que no existiria sin cuentas? eso deberia dar razon es de la cuenta o no? no deberia haber un 404 aceptado, eso es mal diseno. En todo caso que el me devuelva los campos de cuentas vacio pero no se puede trabajar sobre un 404
+
+**Respuesta:**
+Se reconoció como una crítica válida y se respondió con el trade-off (pregunta exploratoria, sin implementar todavía): `404` es lo más apegado a REST clásico para "el recurso no existe", pero en este caso "no tener cuenta" es un estado de negocio normal y esperado (primer uso), no una excepción — forzarlo como error obliga al frontend a un manejo "exception-driven" de un caso que no lo es. Se recomendó cambiar a `200` con `data: null`, aclarando que el cambio toca specs ya cerrados (Spec 2 backend, Spec 4 frontend), y se preguntó si proceder.
+
+---
+
+## Prompt 122
+
+**Usuario:**
+> si
+
+**Respuesta:**
+Se implementó el cambio: `get_account_me` (Spec 2) devuelve `None` en vez de levantar `AppError(404, ...)`, y el controller responde `success_response(data=None, message="No account yet")` (sigue siendo `200`). Se encontró y corrigió un incidente de compatibilidad al aplicar el fix: el venv local corre Python 3.9, y `dict | None` (PEP 604) no es válido en runtime antes de 3.10 — se usó `Optional[dict]`. Se simplificó `Home.tsx` (ya no distingue `error.status === 404`, solo chequea `!account`) y se actualizó el tipo de `getAccountMe()` a `Promise<AccountMe | null>`.
+
+Se verificó contra el backend real (`200` con `data: null`) y se confirmó que el resto de los endpoints que sí necesitan que la cuenta exista (`POST /accounts/close`, `GET /cards/me/details`) siguen devolviendo `404 ACCOUNT_NOT_FOUND` sin cambios. Se encontraron y limpiaron 2 `idempotency_keys` trabadas en `processing` — resultaron ser los 2 intentos reales del usuario desde el navegador antes del fix del Content-Type (mismo patrón de bug ya documentado en Spec 2).
+
+Se actualizó la documentación en cascada: `infra.md` (fuente de verdad del producto), `requirements.md`/`design.md`/`worklog.md` de Spec 2 (decisión revisada + addendum), y los mismos 3 archivos de Specs 4 y 5 donde correspondía (código/contratos desactualizados por el cambio).
+
+---
+
+## Prompt 123
+
+**Usuario:**
+> hazme una lista de casos que pruebo
+
+**Respuesta:**
+Se armó una checklist ordenada (Login → Home sin cuenta → modal Create card → polling/confirmación → botón "+"/Simulate purchase → botón Pay → chequeos transversales de UX) para que el usuario la siguiera paso a paso en el navegador.
+
+---
+
+## Prompt 124
+
+**Usuario:**
+> voy hasta el 3 y bien! pero quita este texto: Color palette inspired by Nu. Abajo de pay, agrega una linea separatoria en gris, y pones en el centro el titulo Transactions, y ahi si la lista de movimientos o decir que no hay aun
+
+**Respuesta:**
+Se sacó el texto "Color palette inspired by Nu" de `Home.tsx`. Se agregó una línea separatoria gris + título "Transactions" centrado entre el botón "Pay" y la lista de movimientos (que ya mostraba "No transactions yet." cuando está vacía).
+
+---
+
+## Prompt 125
+
+**Usuario:**
+> 1. en la lsita de transacciones, no dividas cada una con una linea separatoria 2. no hagas que si pago una deuda salga en verde, que salga tambien negro. Estas manejando los estados de carga cuando se hace un pago o se crea algo en los modales? esta siendo muy rapido y no se ve, pero debes tener en cuenta eso en el diseno. La lista de movimientos que se ven, limitaste que sean solo los 6 mas recientes?
+
+**Respuesta:**
+Se sacó la línea separatoria entre cada ítem de `TransactionsList` (`divide-y` → solo `gap-3`) y el color verde de los pagos (todos los montos quedan en `text-foreground`). Se mejoraron los 3 modales: ahora se deshabilitan todos los campos del form mientras la mutación está en curso (no solo el botón), el botón muestra un spinner (`Loader2`) + texto, y se agregó `toast.success(...)` en el éxito de las 3 mutaciones (antes solo había toast de error). Se confirmó que la lista de la Home ya estaba limitada a los 6 más recientes (`listTransactions(1, 6)`), sin cambios ahí.
+
+---
+
+## Prompt 126
+
+**Usuario:**
+> vale, el toast de exito, que sea verde y salga arriba en el centro. De ehcho, todos los toasts centrados arribas. Si es de error, rojo arriba tambien
+
+**Respuesta:**
+Se agregó `<Toaster position="top-center" richColors />` en `App.tsx` — afecta a todos los toasts de la app (incluido el de `/test-connection` del Spec 0), éxito en verde y error en rojo, todos centrados arriba.
+
+---
+
+## Prompt 127
+
+**Usuario:**
+> vale, hice un gasto en la tarjeta y no se reflejo inmediatamente en el UI, no se actualizo ni las transaccion ni el grid de la tarjeta. Cuando haya un gasto, que se haga refetch de los queries que afecta, eso tendria sentido?
+
+**Respuesta:**
+Se revisó el código de las 3 mutaciones: ya invalidaban `['account','me']` y `['transactions']` correctamente (React Query matchea por prefijo, así que alcanza a `['transactions','home']`) — no se encontró ningún bug de lógica. Revisando el log del dev server se encontró la explicación más probable: durante una edición en vivo anterior (el cambio del 404→200), Vite aplicó un hot-update a medias sobre `Home.tsx` y la página crasheó (`ReferenceError`, sin error boundary) — se corrigió solo en el siguiente guardado, pero la pestaña del navegador pudo haber quedado en un estado roto desde ahí. Se reinició el dev server de cero y se le pidió al usuario un hard refresh antes de reintentar.
+
+---
+
+## Prompt 128
+
+**Usuario:**
+> cuando hago un pago a 3 cuotas, como se refleja en la deuda? pq puse 300 a 3 cuotas, y salio enseguida todo en deuda, pero no deberia ser dividido entre 3?
+
+**Respuesta:**
+Se explicó que es el comportamiento correcto, no un bug: `installment_plan` solo determina la tasa de interés (Spec 3), no fracciona la deuda — el monto completo se descuenta del cupo y pasa a ser deuda apenas se autoriza la compra, igual que una tarjeta de crédito real. Se recordó la decisión de alcance ya tomada en el Spec 2 (tabla `installments` descartada, sin desglose cuota-por-cuota en este MVP).
+
+---
+
+## Prompt 129
+
+**Usuario:**
+> vale, esta funcionando todo bien. Haz el commit de esto
+
+**Respuesta:**
+Se marcaron como cumplidos los criterios de aceptación de `requirements.md` de Specs 4 y 5 (dejando sin marcar el único no alcanzable todavía: los estados `Frozen`/`Overdue`/`Cancelled`, que dependen de la página `/card` del Spec 6). Se actualizó el estado de ambos `worklog.md` a "completo", documentando la ronda final de ajustes de UX (Home, `TransactionsList`, estados de carga, toasts), el incidente de HMR (no un bug de producto), y la aclaración de negocio sobre la deuda en cuotas. Se actualizó este archivo (`prompts.md`) y se procedió al commit.
+

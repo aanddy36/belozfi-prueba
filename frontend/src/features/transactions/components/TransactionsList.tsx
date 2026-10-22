@@ -13,7 +13,7 @@ export function TransactionsList({ items }: TransactionsListProps) {
   }
 
   return (
-    <ul className="divide-y divide-border">
+    <ul className="flex flex-col gap-3">
       {items.map((item, index) => (
         <TransactionRow key={index} item={item} />
       ))}
@@ -26,15 +26,13 @@ function TransactionRow({ item }: { item: TransactionItem }) {
   const title = isPurchase ? (item.merchant_name ?? 'Purchase') : 'Payment'
 
   return (
-    <li className="flex items-center gap-3 py-3">
+    <li className="flex items-center gap-3">
       <AcmeLogo className="h-9 w-9 shrink-0 rounded-full text-sm" />
       <div className="flex-1">
         <p className="text-sm font-medium text-foreground">{title}</p>
         <p className="text-xs text-muted-foreground">{format(parseISO(item.date), 'MMM d, yyyy')}</p>
       </div>
-      <span className={`text-sm font-semibold ${isPurchase ? 'text-foreground' : 'text-emerald-600'}`}>
-        {formatCents(item.amount_cents)}
-      </span>
+      <span className="text-sm font-semibold text-foreground">{formatCents(item.amount_cents)}</span>
     </li>
   )
 }

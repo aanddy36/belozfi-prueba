@@ -163,7 +163,7 @@ Toda operación que mueve plata (depósito, compra, pago, cierre de cuenta) sigu
   "minimum_payment_cents": 2500
 }
 ```
-`404` si no existe cuenta todavía (el frontend muestra "Create card").
+`200` con el body completo como `data: null` si no existe cuenta todavía (el frontend muestra "Create card") — no es un `404`: no tener cuenta es el estado normal de un cliente nuevo, no un error (decisión revisada en el Spec 2 tras probar el Spec 5; ver su `requirements.md`).
 
 **`POST /accounts`** — body `{ "deposit_amount_cents": 100000 }`. Valida mínimo $1.000. Crea `account` (`pending_collateral`), `card` (`inactive`), `collateral_deposit` (`pending`), en una transacción.
 

@@ -37,10 +37,10 @@ Diseño completo en `specs/product/infra.md`, sección "1. Frontend".
 
 ## Criterios de aceptación
 
-- [ ] "Create card" con monto < $1.000 muestra error sin llamar al backend.
-- [ ] Después de confirmar el depósito, la Home muestra `Pending` y hace polling hasta pasar a `Active` a los 10s.
-- [ ] El modal "Pay" muestra los valores correctos de mínimo y total, tomados de la cuenta real.
-- [ ] Pagar "Other amount" por debajo de $25 (con deuda mayor a $25) muestra error sin llamar al backend.
-- [ ] El botón "+" no aparece si la tarjeta no está `Active`.
-- [ ] Simular una compra que excede el cupo disponible muestra error (validado también por el backend, no solo el frontend).
-- [ ] Después de cualquiera de las 3 acciones, la Home refleja el nuevo estado (cupo, deuda, movimientos) sin necesitar un refresh manual.
+- [x] "Create card" con monto < $1.000 muestra error sin llamar al backend.
+- [x] Después de confirmar el depósito, la Home muestra `Pending` y hace polling hasta pasar a `Active` a los 10s.
+- [x] El modal "Pay" muestra los valores correctos de mínimo y total, tomados de la cuenta real.
+- [x] Pagar "Other amount" por debajo de $25 (con deuda mayor a $25) muestra error sin llamar al backend.
+- [x] El botón "+" no aparece si la tarjeta no está `Active`.
+- [x] Simular una compra que excede el cupo disponible muestra error (validado también por el backend, no solo el frontend).
+- [x] Después de cualquiera de las 3 acciones, la Home refleja el nuevo estado (cupo, deuda, movimientos) sin necesitar un refresh manual.

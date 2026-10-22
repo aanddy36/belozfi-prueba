@@ -1,3 +1,7 @@
+export function dollarsToCents(dollars: number): number {
+  return Math.round(dollars * 100)
+}
+
 export function formatCents(amountCents: number): string {
   const amount = amountCents / 100
   const sign = amount < 0 ? '-' : ''

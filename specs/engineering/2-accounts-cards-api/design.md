@@ -430,13 +430,13 @@ async def create_account(
 - `payment_due_date` = el próximo día 10 ≥ hoy. `statement_date` = día 20 del mes inmediatamente anterior a ese `payment_due_date`.
 - `minimum_payment_cents` = 5% de `current_debt_cents`, mínimo $25 (o la deuda completa si es menor a $25).
 - `display_status` con prioridad `Cancelled > Pending > Frozen > Overdue > Active`.
-- `404 ACCOUNT_NOT_FOUND` si el usuario no tiene cuenta todavía.
+- **`200` con `data: null` si el usuario no tiene cuenta todavía** — decisión revisada tras el Spec 5 (ver `requirements.md`, "Decisión revisada"): no tener cuenta es el estado normal de un cliente nuevo, no un error.
 
 **Contrato:**
 ```
 GET /accounts/me
 
-200 →
+200 (con cuenta) →
 { "statusCode": 200, "message": "Account retrieved successfully",
   "data": {
     "account": { "status": "active", "credit_limit_cents": 100000, "available_credit_cents": 55000, "collateral_cents": 100000 },
@@ -447,18 +447,18 @@ GET /accounts/me
     "minimum_payment_cents": 2500
   } }
 
-404 → { "statusCode": 404, "message": "No existe una cuenta para este usuario", "error": { "code": "ACCOUNT_NOT_FOUND" } }
+200 (sin cuenta) → { "statusCode": 200, "message": "No account yet", "data": null }
 ```
 
 **`app/modules/accounts/service.py` (función `get_account_me`):**
 ```python
 from datetime import date, datetime, timezone
 from decimal import ROUND_HALF_UP, Decimal
+from typing import Optional
 from uuid import UUID
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.core.errors import AppError
 from app.modules.accounts.model import Account
 from app.modules.cards.model import Card
 from app.modules.purchases.model import Purchase
@@ -468,10 +468,10 @@ MIN_PAYMENT_CENTS = 2_500  # $25
 MIN_PAYMENT_RATE = Decimal("0.05")
 
 
-def get_account_me(db: Session, user_id: UUID) -> dict:
+def get_account_me(db: Session, user_id: UUID) -> Optional[dict]:
     account = db.query(Account).filter_by(user_id=user_id).first()
     if not account:
-        raise AppError(404, "ACCOUNT_NOT_FOUND", "No existe una cuenta para este usuario")
+        return None
 
     confirm_pending_deposits(db, account.id)
     db.refresh(account)

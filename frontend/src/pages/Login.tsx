@@ -43,14 +43,14 @@ export function LoginPage() {
             <h1 className="text-center text-xl font-bold text-foreground">Acme Credit</h1>
           </div>
 
-          <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-            <div className="space-y-1.5">
+          <form onSubmit={handleSubmit(onSubmit)} noValidate className="space-y-5">
+            <div className="space-y-2">
               <Label htmlFor="username">Username</Label>
               <Input id="username" {...register('username')} />
               {errors.username && <p className="text-xs text-destructive">{errors.username.message}</p>}
             </div>
 
-            <div className="space-y-1.5">
+            <div className="space-y-2">
               <Label htmlFor="password">Password</Label>
               <Input id="password" type="password" {...register('password')} />
               {errors.password && <p className="text-xs text-destructive">{errors.password.message}</p>}

@@ -71,3 +71,11 @@ Esto no reemplaza el job asíncrono de limpieza de `idempotency_keys` (`infra.md
 ## Desvíos respecto al `design.md` original
 
 - **Fix de idempotencia por staleness**: no estaba en la primera versión de `design.md`/`requirements.md` — se agregó tras encontrar el bug en las pruebas (ver arriba). Ambos documentos ya se actualizaron con el código final.
+
+## Addendum (post Spec 5): `GET /accounts/me` sin cuenta deja de ser `404`
+
+Al probar el Spec 5 en el navegador real, se cuestionó el diseño original: devolver `404 ACCOUNT_NOT_FOUND` cuando el usuario no tiene cuenta todavía trata un estado de negocio normal (cliente nuevo, antes de "Create card") como si fuera un error — obliga al frontend a usar manejo de excepciones para un caso esperado. Se cambió a `200` con `data: null`. Detalle completo de la decisión y el nuevo contrato en `requirements.md` ("Decisión revisada") y `design.md` (HU-2.2 actualizada). El resto de los endpoints de este spec que sí necesitan que la cuenta exista para operar mantienen `404 ACCOUNT_NOT_FOUND` sin cambios.
+
+Se encontró de paso un problema de compatibilidad al aplicar el fix: el venv local corre Python 3.9 (no 3.12 como el `.python-version` fijado para Render en el Spec 0), y la sintaxis `dict | None` de tipos (PEP 604) no es válida en runtime antes de 3.10 — se usó `Optional[dict]` de `typing` en su lugar, consistente con el resto del código base que ya usaba `Optional` (ej. `app/core/errors.py`).
+
+Verificado contra el backend real: `GET /accounts/me` sin cuenta → `{"statusCode":200,"message":"No account yet","data":null}`.

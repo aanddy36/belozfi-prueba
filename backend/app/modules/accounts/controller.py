@@ -16,6 +16,9 @@ from app.shared.utils.idempotency import (
 async def get_me(db: Session = Depends(get_db)):
     user = get_current_user(db)
     result = accounts_service.get_account_me(db, user.id)
+    if result is None:
+        return success_response(data=None, message="No account yet")
+
     data = {
         "account": {
             "status": result["account"].status,

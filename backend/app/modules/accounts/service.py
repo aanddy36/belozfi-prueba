@@ -1,6 +1,7 @@
 import secrets
 from datetime import date, datetime, timezone
 from decimal import ROUND_HALF_UP, Decimal
+from typing import Optional
 from uuid import UUID
 
 from sqlalchemy import func
@@ -51,10 +52,10 @@ def _generate_card_number() -> str:
     return "5" + "".join(str(secrets.randbelow(10)) for _ in range(15))
 
 
-def get_account_me(db: Session, user_id: UUID) -> dict:
+def get_account_me(db: Session, user_id: UUID) -> Optional[dict]:
     account = db.query(Account).filter_by(user_id=user_id).first()
     if not account:
-        raise AppError(404, "ACCOUNT_NOT_FOUND", "No existe una cuenta para este usuario")
+        return None
 
     confirm_pending_deposits(db, account.id)
     db.refresh(account)

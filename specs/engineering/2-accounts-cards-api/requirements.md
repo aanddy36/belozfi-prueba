@@ -32,7 +32,13 @@ Toda respuesta de la API sigue uno de estos dos formatos, nunca un híbrido:
 | `HTTPException` (nativo de FastAPI/Starlette, por si algo la lanza directo) | el que traiga la excepción | `HTTP_ERROR` |
 | `Exception` (catch-all, no debería pasar) | 500 | `INTERNAL_SERVER_ERROR` (sin exponer detalles internos) |
 
-Catálogo de códigos de error que usa este spec: `VALIDATION_ERROR` (400 — regla de negocio, ej. depósito < $1.000; o 422 — schema inválido), `ACCOUNT_NOT_FOUND` (404), `ACCOUNT_ALREADY_EXISTS` (409 — ya existe cuenta para el usuario), `OUTSTANDING_BALANCE` (409 — cierre con deuda pendiente), `CARD_NOT_ACTIVE` (409 — freeze sobre tarjeta `inactive` o cuenta `closed`), `CARD_INACTIVE` (409 — `GET /cards/me/details` antes de la activación), `IDEMPOTENCY_KEY_REQUIRED` (400 — falta el header en un endpoint que lo exige), `IDEMPOTENCY_KEY_CONFLICT` (409 — misma key con body distinto).
+Catálogo de códigos de error que usa este spec: `VALIDATION_ERROR` (400 — regla de negocio, ej. depósito < $1.000; o 422 — schema inválido), `ACCOUNT_NOT_FOUND` (404 — operar sobre una cuenta que debería existir; **ya no aplica a `GET /accounts/me`**, ver abajo), `ACCOUNT_ALREADY_EXISTS` (409 — ya existe cuenta para el usuario), `OUTSTANDING_BALANCE` (409 — cierre con deuda pendiente), `CARD_NOT_ACTIVE` (409 — freeze sobre tarjeta `inactive` o cuenta `closed`), `CARD_INACTIVE` (409 — `GET /cards/me/details` antes de la activación), `IDEMPOTENCY_KEY_REQUIRED` (400 — falta el header en un endpoint que lo exige), `IDEMPOTENCY_KEY_CONFLICT` (409 — misma key con body distinto).
+
+### Decisión revisada (post Spec 5): `GET /accounts/me` sin cuenta ya no es un `404`
+
+Decisión original de este spec: `GET /accounts/me` devolvía `404 ACCOUNT_NOT_FOUND` cuando el usuario todavía no había creado su cuenta. Se revisó en el Spec 5 al notar el problema de fondo: "no tener cuenta todavía" no es una situación excepcional para este endpoint — es el estado normal y esperado de cualquier cliente antes de pasar por "Create card", algo que le va a pasar a todo usuario nuevo. Forzar un `404` ahí obliga al frontend a tratar un estado de negocio legítimo como si fuera un error de red/servidor (`error instanceof ApiError && error.status === 404`), mezclando dos cosas distintas.
+
+**Ahora**: `GET /accounts/me` devuelve siempre `200`, con `data: null` (y un `message` descriptivo, ej. `"No account yet"`) cuando no existe cuenta. El resto de los endpoints de este spec que sí dependen de que la cuenta exista para operar (`POST /accounts/close`, `PATCH /cards/freeze`, `GET /cards/me/details`, y los de Spec 3) **mantienen** `404 ACCOUNT_NOT_FOUND` sin cambios — ahí sí es un error real (se está pidiendo actuar sobre algo que debería existir y no existe).
 
 ### Idempotencia
 
@@ -61,7 +67,7 @@ Función que, para la cuenta dada, confirma todo `collateral_deposit` en `pendin
 
 ## Endpoints — Módulo Accounts
 
-- `GET /accounts/me` — corre la confirmación lazy primero, calcula `payment_due_date`/`statement_date`/`minimum_payment_cents`/`current_debt_cents`, resuelve `display_status` con prioridad `Cancelled > Pending > Frozen > Overdue > Active`. `404 ACCOUNT_NOT_FOUND` si no existe cuenta.
+- `GET /accounts/me` — corre la confirmación lazy primero, calcula `payment_due_date`/`statement_date`/`minimum_payment_cents`/`current_debt_cents`, resuelve `display_status` con prioridad `Cancelled > Pending > Frozen > Overdue > Active`. **`200` con `data: null` si no existe cuenta todavía** (no es un error — es el estado esperado de un cliente que todavía no creó su tarjeta; ver "Decisión revisada" más abajo). El resto de los endpoints de la API sí usan `404 ACCOUNT_NOT_FOUND` cuando corresponde (ej. operar sobre una cuenta que debería existir).
 - `POST /accounts` — crea `account` + `card` + `collateral_deposit` iniciales. Valida mínimo $1.000 (`400 VALIDATION_ERROR` si no). Requiere `Idempotency-Key`.
 - `POST /accounts/close` — valida `current_debt_cents == 0` (`409 OUTSTANDING_BALANCE` si no), libera garantía, cierra la cuenta. Requiere `Idempotency-Key`.
 
@@ -82,4 +88,5 @@ Función que, para la cuenta dada, confirma todo `collateral_deposit` en `pendin
 - [x] `POST /accounts/close` con deuda pendiente devuelve `409 OUTSTANDING_BALANCE`, no cierra la cuenta.
 - [x] `PATCH /cards/freeze` sobre una tarjeta `inactive` devuelve `409 CARD_NOT_ACTIVE`.
 - [x] `GET /cards/me/details` sobre una tarjeta `inactive` devuelve `409 CARD_INACTIVE`.
+- [x] `GET /accounts/me` sin cuenta devuelve `200` con `data: null` (no `404`).
 - [ ] Dos requests simultáneas que tocan la misma cuenta (ej. dos llamadas a algo que la bloquea) se serializan correctamente por el lock, sin resultados inconsistentes. *(no probado en este spec — ver `worklog.md`; el lock es correcto por construcción con `SELECT ... FOR UPDATE`, pero no hay en Accounts/Cards un escenario con impacto de negocio real para forzar la carrera. Se prueba de verdad en Spec 3, donde dos compras/pagos simultáneos sí pueden pisarse el cupo.)*
