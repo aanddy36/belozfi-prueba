@@ -101,8 +101,11 @@ def health(db: Session = Depends(get_db)):
 ### `.env.example` (backend)
 
 ```
-DATABASE_URL=postgresql://postgres:CHANGE_ME@localhost:5432/acme_app
+DATABASE_URL=postgresql+psycopg2://postgres:CHANGE_ME@localhost:5432/acme_app
+CORS_ORIGINS=["http://localhost:5173","http://localhost:5174"]
 ```
+
+El driver `+psycopg2` es explícito a propósito (ver `worklog.md` — sin esto, SQLAlchemy 2.1+ intenta usar `psycopg` v3 por default y rompe en entornos donde solo está instalado `psycopg2-binary`, como Render).
 
 ## 2. Frontend
 
