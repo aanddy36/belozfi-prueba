@@ -1013,3 +1013,49 @@ Se crearon los 8 archivos de modelos SQLAlchemy (`app/shared/models/{user,ledger
 **Respuesta:**
 Se agregó una sección "Cierre" a `worklog.md` del Spec 1, repasando uno por uno los 5 criterios de aceptación de `requirements.md` y confirmando que quedan cumplidos, y marcando el spec como terminado (sin nada pendiente, sigue el Spec 2). Se marcaron esos mismos 5 checkboxes como `[x]` en `requirements.md`. Se actualizó este archivo (`prompts.md`) con los prompts 92 a 96.
 
+---
+
+## Prompt 97
+
+**Usuario:**
+> haz commit primero: solo commit, no push
+
+**Respuesta:**
+Se detectó un archivo duplicado (`backend/sql/schema.sql`, idéntico al real en `backend/app/db/schema.sql`) que había quedado de un intento anterior creído cancelado — se verificó con `diff` que eran idénticos y se borró el duplicado (nunca estuvo trackeado por git). Se corrió `git status`, se agregaron solo los archivos esperados del Spec 1 (sin `git add -A`), y se hizo el commit `ebbbca5` ("feat: schema.sql y modelos SQLAlchemy del Spec 1"), sin push.
+
+---
+
+## Prompt 98
+
+**Usuario:**
+> bien. Para refinar el spec 2, veo que vas a implementar 2 modulos y la infraesturctura transversla de idempotencia. Me parece muy bien. Ademas te agrego que hagas la estandarizacion de respuestas: con tal de que sea una funcion la que estandarice el formato que devuelven la respuesta los endpoints, ese debe ser un json con message, statusCode y data. Si no hay data puede ir vacio y en su defecto error. Ademas agrega estandarizar los errores, con tal de manejarlos si? siempre siguiendo las buenas practicas
+
+**Respuesta:**
+Se preguntaron 2 decisiones de forma del nuevo envelope de respuesta (ya que se usaría en toda la API de ahora en adelante): si las keys `data`/`error` conviven siempre en null o se omite la que no aplica, y si los errores 422 nativos de Pydantic se interceptan para seguir el mismo formato. Respuestas: se omite la key que no aplica (éxito: `{statusCode, message, data}`; error: `{statusCode, message, error}`), y sí interceptar los 422 de Pydantic.
+
+Se reescribió `requirements.md` del Spec 2 agregando la sección "Estandarización de respuesta y errores" (helper `success_response`, clase `AppError`, 4 exception handlers — `AppError`/`RequestValidationError`/`HTTPException`/catch-all, catálogo de códigos de error), y precisando las reglas de idempotencia (conflicto de `request_hash` → `409 IDEMPOTENCY_KEY_CONFLICT`) y de `GET /cards/me/details` (`409 CARD_INACTIVE` si la tarjeta no está activada) que habían quedado contestadas en el Prompt 87 (antes de la corrección de foco al Spec 1).
+
+---
+
+## Prompt 99
+
+**Usuario:**
+> esta bien asi
+
+**Respuesta:**
+Se escribió `design.md` del Spec 2 completo: infraestructura transversal (`success_response`, `AppError`, los 4 exception handlers, `require_idempotency_key`/`complete_idempotency_key`/`release_idempotency_key`, `lock_account_by_user`, `record_ledger_entry`, `confirm_pending_deposits` compartido con Spec 3, y `get_current_user` como resolución del "usuario actual" sin auth) y 5 Historias de Usuario (HU-2.1 a HU-2.5: crear cuenta, ver estado de cuenta, cerrar cuenta, congelar/descongelar tarjeta, ver detalle de tarjeta), cada una con narrativa, reglas de negocio, contrato de request/response con el nuevo envelope, y el código de `schema.py`/`service.py`/`controller.py` correspondiente. Se dejó explícito que `GET /health` del Spec 0 no se migra al nuevo envelope (ya probado de punta a punta, el frontend depende de su forma actual).
+
+---
+
+## Prompt 100
+
+**Usuario:**
+> dale, implementalo en el backend
+
+**Respuesta:**
+Se crearon todos los archivos de `design.md`: `app/core/{responses,errors,exception_handlers}.py`, los 5 `shared/utils/` (`idempotency`, `locking`, `ledger`, `collateral_confirmation`, `current_user`), y los 4 archivos (`schema`/`service`/`controller`/`route`) de cada módulo `accounts`/`cards`, más el registro de routers y exception handlers en `app/main.py` (sin tocar `/health`). Se verificó que la app importa y registra las 7 rutas esperadas.
+
+Se corrió un test funcional completo contra Postgres local: como no había `httpx` instalado (lo pide `TestClient`), se levantó el server real con `uvicorn` en el puerto 8001 y se probó con `curl`, 18 escenarios en secuencia (créación de cuenta, validación de depósito mínimo, idempotencia con mismo/distinto body, confirmación lazy a los 10s, estados `Pending`/`Active`/`Frozen`/`Cancelled`, detalle de tarjeta, cierre de cuenta, 422 de Pydantic) — todos con el resultado esperado, incluyendo las fórmulas de fecha en vivo (hoy 2026-10-22 → `payment_due_date` 2026-11-10, `statement_date` 2026-10-20).
+
+La prueba del escenario 18 reveló un bug real: una `Idempotency-Key` enviada con un body inválido (422) queda trabada en `processing` para siempre, porque el error ocurre antes de que el `try/except` del controller pueda liberarla — un reintento futuro con la misma key (body corregido) quedaría bloqueado sin salida. Se arregló agregando un timeout de 30s de "stale" en `require_idempotency_key`: una key en `processing` por más de ese tiempo se trata como abandonada y se permite reintentar. Se verificó insertando manualmente una key fresca (bloquea, `409`) y una de 40s (se deja pasar, llega al negocio). Se actualizaron `design.md`/`requirements.md` con el fix, se borraron todos los datos de prueba de la DB local (quedó solo el seed de John Doe), y se escribió `worklog.md` del Spec 2 documentando todo lo hecho, probado, el bug encontrado, y el único criterio de aceptación no probado (concurrencia real — no hay un escenario con impacto de negocio dentro de Accounts/Cards para forzarlo, se prueba de verdad en Spec 3).
+
