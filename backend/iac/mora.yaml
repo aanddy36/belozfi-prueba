@@ -1,0 +1,196 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  Spec 8 — Escalado de mora (infra.md sección 2.2.3).
+  Pasos 1-2 (entrar en mora / bloquear compras día 7): UPDATE por lotes, sin fan-out.
+  Paso 3 (aplicar garantía día 30): detector + cola + aplicadora por cuenta (mueve dinero real).
+  Documentado como ejercicio de diseño — NO se despliega (ver requirements.md de este spec).
+
+Parameters:
+  VpcSubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: Subnets privadas donde corre RDS Proxy (placeholder — no se despliega).
+  DbProxyVpcSecurityGroupIds:
+    Type: List<AWS::EC2::SecurityGroup::Id>
+    Description: Security groups para RDS Proxy (placeholder — no se despliega).
+  DbCredentialsSecretArn:
+    Type: String
+    Description: ARN del secret de Secrets Manager con las credenciales de Postgres (placeholder).
+  DbProxyTargetDbInstanceIdentifier:
+    Type: String
+    Description: Identificador de la instancia RDS a la que apunta el proxy (placeholder).
+
+Resources:
+  # --- Pasos 1-2: entrar en mora / bloquear compras (sin fan-out) ---
+  MoraStatusFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: acme-mora-status
+      Runtime: python3.12
+      Handler: index.handler
+      Timeout: 300
+      MemorySize: 256
+      InlineCode: |
+        def handler(event, context):
+            # Stub — en producción: UPDATE por lotes marcando status='mora' a las cuentas
+            # vencidas (día 10 + N sin pagar el mínimo) y can_purchase=false a los 7 días
+            # de mora (infra.md sección 2.2.3, pasos 1-2). Sin lógica real en este MVP.
+            return {"statusCode": 200}
+
+  MoraStatusSchedule:
+    Type: AWS::Scheduler::Schedule
+    Properties:
+      Name: acme-mora-status-daily
+      Description: Dispara los pasos 1-2 de mora diariamente, antes que el job de intereses.
+      ScheduleExpression: "cron(0 2 * * ? *)"
+      ScheduleExpressionTimezone: America/Santiago
+      FlexibleTimeWindow:
+        Mode: "OFF"
+      State: DISABLED
+      Target:
+        Arn: !GetAtt MoraStatusFunction.Arn
+        RoleArn: !GetAtt SchedulerInvocationRole.Arn
+
+  # --- Paso 3: detectar cuentas en día 30 y aplicar la garantía por cuenta ---
+  CollateralApplicationQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: acme-collateral-application
+      VisibilityTimeout: 120
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt CollateralApplicationDLQ.Arn
+        maxReceiveCount: 5
+
+  CollateralApplicationDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: acme-collateral-application-dlq
+      MessageRetentionPeriod: 1209600 # 14 días
+
+  MoraDetectorFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: acme-mora-detector
+      Runtime: python3.12
+      Handler: index.handler
+      Timeout: 300
+      MemorySize: 256
+      Policies:
+        - SQSSendMessagePolicy:
+            QueueName: !GetAtt CollateralApplicationQueue.QueueName
+      Environment:
+        Variables:
+          COLLATERAL_APPLICATION_QUEUE_URL: !Ref CollateralApplicationQueue
+      InlineCode: |
+        def handler(event, context):
+            # Stub — en producción: SELECT account_id FROM accounts WHERE status='mora'
+            # AND mora_started_at <= NOW() - INTERVAL '30 days' AND collateral_applied_at IS NULL,
+            # y por cada una, SendMessage a CollateralApplicationQueue (infra.md sección 2.2.3).
+            return {"statusCode": 200}
+
+  MoraDetectorSchedule:
+    Type: AWS::Scheduler::Schedule
+    Properties:
+      Name: acme-mora-detector-daily
+      Description: Mismo cron diario que MoraStatusSchedule — identifica cuentas que cruzan el día 30 de mora.
+      ScheduleExpression: "cron(0 2 * * ? *)"
+      ScheduleExpressionTimezone: America/Santiago
+      FlexibleTimeWindow:
+        Mode: "OFF"
+      State: DISABLED
+      Target:
+        Arn: !GetAtt MoraDetectorFunction.Arn
+        RoleArn: !GetAtt SchedulerInvocationRole.Arn
+
+  CollateralApplierFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: acme-collateral-applier
+      Runtime: python3.12
+      Handler: index.handler
+      Timeout: 60
+      MemorySize: 256
+      ReservedConcurrentExecutions: 20
+      Events:
+        CollateralApplicationEvent:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt CollateralApplicationQueue.Arn
+            BatchSize: 1
+      InlineCode: |
+        def handler(event, context):
+            # Stub — en producción: por cada account_id del mensaje SQS, dentro de una
+            # transacción con SELECT ... FOR UPDATE: si collateral_cents cubre la deuda,
+            # aplica lo necesario, devuelve el excedente y cierra la cuenta; si no alcanza,
+            # aplica toda la garantía, marca collateral_applied_at y deja la cuenta en mora
+            # con el saldo remanente (infra.md sección 2.2.3, producto.md sección 5).
+            # Requiere RDS Proxy por el fan-out (una ejecución concurrente por cuenta).
+            return {"statusCode": 200}
+
+  # --- RDS Proxy: necesario por el fan-out de CollateralApplierFunction ---
+  DbProxyRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: rds.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: ReadDbCredentialsSecret
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: secretsmanager:GetSecretValue
+                Resource: !Ref DbCredentialsSecretArn
+
+  AcmeDbProxy:
+    Type: AWS::RDS::DBProxy
+    Properties:
+      DBProxyName: acme-credit-db-proxy
+      EngineFamily: POSTGRESQL
+      RoleArn: !GetAtt DbProxyRole.Arn
+      VpcSubnetIds: !Ref VpcSubnetIds
+      VpcSecurityGroupIds: !Ref DbProxyVpcSecurityGroupIds
+      RequireTLS: true
+      Auth:
+        - AuthScheme: SECRETS
+          SecretArn: !Ref DbCredentialsSecretArn
+          IAMAuth: DISABLED
+
+  AcmeDbProxyTargetGroup:
+    Type: AWS::RDS::DBProxyTargetGroup
+    Properties:
+      DBProxyName: !Ref AcmeDbProxy
+      DBInstanceIdentifiers:
+        - !Ref DbProxyTargetDbInstanceIdentifier
+      TargetGroupName: default
+
+  SchedulerInvocationRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: scheduler.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: InvokeMoraFunctions
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: lambda:InvokeFunction
+                Resource:
+                  - !GetAtt MoraStatusFunction.Arn
+                  - !GetAtt MoraDetectorFunction.Arn
+
+Outputs:
+  CollateralApplicationQueueUrl:
+    Description: URL de la cola que desacopla la detección de la aplicación de garantía
+    Value: !Ref CollateralApplicationQueue

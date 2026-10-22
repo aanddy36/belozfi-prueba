@@ -40,7 +40,7 @@ Crear los templates de Infraestructura como Código (IaC) de los 3 procesos así
 
 ## Criterios de aceptación
 
-- [ ] Los 3 archivos YAML son sintácticamente válidos (ej. pasan `sam validate` o `cfn-lint`, aunque no se desplieguen).
-- [ ] Cada recurso definido en `infra.md` para ese proceso está representado en el template correspondiente.
-- [ ] Ningún template se despliega ni se conecta al pipeline de CI/CD del Spec 0 — son archivos de documentación/diseño, no parte del build real.
-- [ ] El código de las Lambdas referenciadas es un stub mínimo (ej. `return {"statusCode": 200}`), dejando claro que no implementan la lógica real.
+- [x] Los 3 archivos YAML son sintácticamente válidos (ej. pasan `sam validate` o `cfn-lint`, aunque no se desplieguen).
+- [x] Cada recurso definido en `infra.md` para ese proceso está representado en el template correspondiente.
+- [x] Ningún template se despliega ni se conecta al pipeline de CI/CD del Spec 0 — son archivos de documentación/diseño, no parte del build real.
+- [x] El código de las Lambdas referenciadas es un stub mínimo (ej. `return {"statusCode": 200}`), dejando claro que no implementan la lógica real.

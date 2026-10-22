@@ -1,0 +1,326 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  Spec 8 — Extractos / Statement Generation (infra.md sección 2.2.1, enfoque complejo).
+  EventBridge -> Step Functions (Distributed Map) -> SQS1 -> Lambda (calcula extracto)
+  -> SQS2 -> Lambda (genera PDF). Pensado para escala de millones de cuentas.
+  Documentado como ejercicio de diseño — NO se despliega (ver requirements.md de este spec).
+
+Parameters:
+  VpcSubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: Subnets privadas donde corre RDS Proxy (placeholder — no se despliega).
+  DbProxyVpcSecurityGroupIds:
+    Type: List<AWS::EC2::SecurityGroup::Id>
+    Description: Security groups para RDS Proxy (placeholder — no se despliega).
+  DbCredentialsSecretArn:
+    Type: String
+    Description: ARN del secret de Secrets Manager con las credenciales de Postgres (placeholder).
+  DbProxyTargetDbInstanceIdentifier:
+    Type: String
+    Description: Identificador de la instancia RDS a la que apunta el proxy (placeholder).
+
+Resources:
+  # --- S3: manifiesto de cuentas a procesar + PDFs generados ---
+  ManifestBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: acme-statements-manifest
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  StatementsPdfBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: acme-statements-pdfs
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      # Los PDFs se sirven al cliente vía URL firmada (presigned URL), nunca público (infra.md 2.2.1).
+
+  # --- SQS1: desacopla el enqueuer del cálculo del extracto ---
+  StatementsQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: acme-statements-queue
+      VisibilityTimeout: 120
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt StatementsQueueDLQ.Arn
+        maxReceiveCount: 5
+
+  StatementsQueueDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: acme-statements-queue-dlq
+      MessageRetentionPeriod: 1209600 # 14 días
+
+  # --- SQS2: desacopla el cálculo del extracto de la generación del PDF ---
+  PdfGenerationQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: acme-pdf-generation-queue
+      VisibilityTimeout: 180
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt PdfGenerationQueueDLQ.Arn
+        maxReceiveCount: 5
+
+  PdfGenerationQueueDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: acme-pdf-generation-queue-dlq
+      MessageRetentionPeriod: 1209600 # 14 días
+
+  # --- Lambda 1: exportadora — lista cuentas activas y escribe el manifiesto en S3 ---
+  ExporterFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: acme-statements-exporter
+      Runtime: python3.12
+      Handler: index.handler
+      Timeout: 300
+      MemorySize: 512
+      Policies:
+        - S3WritePolicy:
+            BucketName: !Ref ManifestBucket
+      Environment:
+        Variables:
+          MANIFEST_BUCKET: !Ref ManifestBucket
+      InlineCode: |
+        def handler(event, context):
+            # Stub — en producción: SELECT account_id FROM accounts WHERE status='active',
+            # escribe el resultado como CSV en S3 (no como output del step: el límite de
+            # estado de Step Functions es ~256KB, infra.md sección 2.2.1).
+            return {
+                "manifest_bucket": "acme-statements-manifest",
+                "manifest_key": "manifests/stub.csv",
+            }
+
+  # --- Lambda 2: enqueuer — por cada lote del Distributed Map, encola en SQS1 ---
+  EnqueuerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: acme-statements-enqueuer
+      Runtime: python3.12
+      Handler: index.handler
+      Timeout: 60
+      MemorySize: 256
+      Policies:
+        - SQSSendMessagePolicy:
+            QueueName: !GetAtt StatementsQueue.QueueName
+      Environment:
+        Variables:
+          STATEMENTS_QUEUE_URL: !Ref StatementsQueue
+      InlineCode: |
+        def handler(event, context):
+            # Stub — en producción: SendMessageBatch a StatementsQueue con los account_id
+            # del lote recibido (+ period_start/period_end, precalculados una sola vez).
+            return {"statusCode": 200}
+
+  # --- Lambda 3: generadora de extracto — consume SQS1, calcula totales, encola en SQS2 ---
+  StatementGeneratorFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: acme-statement-generator
+      Runtime: python3.12
+      Handler: index.handler
+      Timeout: 60
+      MemorySize: 256
+      ReservedConcurrentExecutions: 50
+      Policies:
+        - SQSSendMessagePolicy:
+            QueueName: !GetAtt PdfGenerationQueue.QueueName
+      Environment:
+        Variables:
+          PDF_GENERATION_QUEUE_URL: !Ref PdfGenerationQueue
+      Events:
+        StatementsEvent:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt StatementsQueue.Arn
+            BatchSize: 1
+      InlineCode: |
+        def handler(event, context):
+            # Stub — en producción, por cada account_id del mensaje: lee movimientos del
+            # período (vía RDS Proxy), calcula total adeudado + pago mínimo (5%, min $25),
+            # inserta el extracto (idempotente: UNIQUE en (account_id, period)), y encola
+            # su id en PdfGenerationQueue (infra.md sección 2.2.1, paso 4 y 6).
+            return {"statusCode": 200}
+
+  # --- Lambda 4: generadora de PDF — consume SQS2, renderiza y sube a S3 ---
+  PdfGeneratorFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: acme-statement-pdf-generator
+      Runtime: python3.12
+      Handler: index.handler
+      Timeout: 60
+      MemorySize: 512
+      ReservedConcurrentExecutions: 20
+      Policies:
+        - S3WritePolicy:
+            BucketName: !Ref StatementsPdfBucket
+      Environment:
+        Variables:
+          STATEMENTS_PDF_BUCKET: !Ref StatementsPdfBucket
+      Events:
+        PdfGenerationEvent:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt PdfGenerationQueue.Arn
+            BatchSize: 1
+      InlineCode: |
+        def handler(event, context):
+            # Stub — en producción: lee el statement + movimientos del período, renderiza
+            # el PDF, lo sube a S3, actualiza statements.pdf_url. Idempotente: si
+            # pdf_url IS NOT NULL, no regenera (infra.md sección 2.2.1, paso 6).
+            return {"statusCode": 200}
+
+  # --- Step Functions: orquesta el fan-out con Distributed Map ---
+  StatementsStateMachine:
+    Type: AWS::Serverless::StateMachine
+    Properties:
+      Name: acme-statements-state-machine
+      Policies:
+        - LambdaInvokePolicy:
+            FunctionName: !Ref ExporterFunction
+        - LambdaInvokePolicy:
+            FunctionName: !Ref EnqueuerFunction
+        - S3ReadPolicy:
+            BucketName: !Ref ManifestBucket
+        - S3WritePolicy:
+            BucketName: !Ref ManifestBucket
+      Definition:
+        Comment: "Spec 8 - Extractos (infra.md 2.2.1): exporta cuentas activas y hace fan-out con Distributed Map"
+        StartAt: ExportAccounts
+        States:
+          ExportAccounts:
+            Type: Task
+            Resource: arn:aws:states:::lambda:invoke
+            Parameters:
+              FunctionName: !GetAtt ExporterFunction.Arn
+              Payload.$: "$"
+            ResultSelector:
+              ManifestBucket.$: "$.Payload.manifest_bucket"
+              ManifestKey.$: "$.Payload.manifest_key"
+            Next: ProcessAccountBatches
+          ProcessAccountBatches:
+            Type: Map
+            ItemProcessor:
+              ProcessorConfig:
+                Mode: DISTRIBUTED
+                ExecutionType: STANDARD
+              StartAt: EnqueueBatch
+              States:
+                EnqueueBatch:
+                  Type: Task
+                  Resource: arn:aws:states:::lambda:invoke
+                  Parameters:
+                    FunctionName: !GetAtt EnqueuerFunction.Arn
+                    Payload.$: "$"
+                  End: true
+            ItemReader:
+              Resource: arn:aws:states:::s3:getObject
+              ReaderConfig:
+                InputType: CSV
+                CSVHeaderLocation: FIRST_ROW
+              Parameters:
+                Bucket.$: "$.ManifestBucket"
+                Key.$: "$.ManifestKey"
+            ItemBatcher:
+              MaxItemsPerBatch: 500
+            MaxConcurrency: 100
+            ResultWriter:
+              Resource: arn:aws:states:::s3:putObject
+              Parameters:
+                Bucket: !Ref ManifestBucket
+                Prefix: results
+            End: true
+
+  # --- EventBridge Scheduler: dispara la Step Function el día 20 de cada mes ---
+  StatementsSchedule:
+    Type: AWS::Scheduler::Schedule
+    Properties:
+      Name: acme-statements-monthly
+      Description: Dispara la generación de extractos el día 20 de cada mes (infra.md sección 2.2.1).
+      ScheduleExpression: "cron(0 0 20 * ? *)"
+      ScheduleExpressionTimezone: America/Santiago
+      FlexibleTimeWindow:
+        Mode: "OFF"
+      State: DISABLED
+      Target:
+        Arn: !GetAtt StatementsStateMachine.Arn
+        RoleArn: !GetAtt SchedulerInvocationRole.Arn
+
+  SchedulerInvocationRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: scheduler.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: StartStatementsStateMachine
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: states:StartExecution
+                Resource: !Ref StatementsStateMachine
+
+  # --- RDS Proxy: necesario por el fan-out de StatementGeneratorFunction/PdfGeneratorFunction ---
+  DbProxyRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: rds.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: ReadDbCredentialsSecret
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: secretsmanager:GetSecretValue
+                Resource: !Ref DbCredentialsSecretArn
+
+  AcmeDbProxy:
+    Type: AWS::RDS::DBProxy
+    Properties:
+      DBProxyName: acme-credit-db-proxy
+      EngineFamily: POSTGRESQL
+      RoleArn: !GetAtt DbProxyRole.Arn
+      VpcSubnetIds: !Ref VpcSubnetIds
+      VpcSecurityGroupIds: !Ref DbProxyVpcSecurityGroupIds
+      RequireTLS: true
+      Auth:
+        - AuthScheme: SECRETS
+          SecretArn: !Ref DbCredentialsSecretArn
+          IAMAuth: DISABLED
+
+  AcmeDbProxyTargetGroup:
+    Type: AWS::RDS::DBProxyTargetGroup
+    Properties:
+      DBProxyName: !Ref AcmeDbProxy
+      DBInstanceIdentifiers:
+        - !Ref DbProxyTargetDbInstanceIdentifier
+      TargetGroupName: default
+
+Outputs:
+  StatementsStateMachineArn:
+    Description: ARN de la Step Function que orquesta la generación de extractos
+    Value: !Ref StatementsStateMachine
+  StatementsPdfBucketName:
+    Description: Bucket donde se guardan los PDFs de extractos generados
+    Value: !Ref StatementsPdfBucket

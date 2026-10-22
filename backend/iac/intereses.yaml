@@ -1,0 +1,62 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  Spec 8 — Acumulación/recálculo de intereses (infra.md sección 2.2.2).
+  Job diario, sin fan-out: un UPDATE por lotes resuelve todas las cuentas de una vez.
+  Documentado como ejercicio de diseño — NO se despliega (ver requirements.md de este spec).
+
+Resources:
+  InterestAccrualFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: acme-interest-accrual
+      Runtime: python3.12
+      Handler: index.handler
+      Timeout: 300
+      MemorySize: 256
+      InlineCode: |
+        def handler(event, context):
+            # Stub — en producción correría, por lotes de account_id, el UPDATE descrito
+            # en infra.md sección 2.2.2 (CASE WHEN status='mora' THEN 0.025 ELSE 0.02 END),
+            # sumando el interés devengado desde el último cálculo (last_accrued_at).
+            # Sin lógica real: el job de intereses no está desplegado en este MVP
+            # (ver infra.md sección 4.2).
+            return {"statusCode": 200}
+
+  InterestAccrualSchedule:
+    Type: AWS::Scheduler::Schedule
+    Properties:
+      Name: acme-interest-accrual-daily
+      Description: Dispara el recálculo diario de intereses (infra.md sección 2.2.2). Corre después del job de mora.
+      ScheduleExpression: "cron(0 3 * * ? *)"
+      ScheduleExpressionTimezone: America/Santiago
+      FlexibleTimeWindow:
+        Mode: "OFF"
+      State: DISABLED
+      Target:
+        Arn: !GetAtt InterestAccrualFunction.Arn
+        RoleArn: !GetAtt SchedulerInvocationRole.Arn
+
+  SchedulerInvocationRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: scheduler.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: InvokeInterestAccrualFunction
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: lambda:InvokeFunction
+                Resource: !GetAtt InterestAccrualFunction.Arn
+
+Outputs:
+  InterestAccrualFunctionArn:
+    Description: ARN de la Lambda de recálculo de intereses
+    Value: !GetAtt InterestAccrualFunction.Arn

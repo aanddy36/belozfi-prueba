@@ -1523,3 +1523,15 @@ Se verificó (solo lectura) que `GET /accounts/me`/`GET /transactions` ya apunta
 **Respuesta:**
 Se marcaron como cumplidos los 4 criterios de aceptación de `requirements.md` de Spec 7 y se escribió `worklog.md` con estado "completo", dejando documentado como único matiz que la paginación multi-página no se probó con más de 20 ítems reales (por no querer inflar la cuenta real del usuario con datos falsos) aunque la lógica subyacente ya estaba probada en specs anteriores.
 
+---
+
+## Prompt 145
+
+**Usuario:**
+> dale, empiezalo
+
+**Respuesta:**
+Se escribió un `design.md` breve (tabla de mapeo recurso → sección de `infra.md` para cada uno de los 3 procesos) y se implementaron directamente los 3 templates AWS SAM en `backend/iac/`: `intereses.yaml` (cron diario + 1 Lambda stub, sin fan-out), `mora.yaml` (cron diario + Lambda de status/bloqueo sin fan-out + detectora/cola/aplicadora por cuenta + RDS Proxy), `extractos.yaml` (cron mensual + Step Functions con Distributed Map + 2 buckets S3 + 2 pares SQS/DLQ + 4 Lambdas + RDS Proxy). Las Lambdas usan `InlineCode` con stubs de 1-2 líneas comentando qué haría la lógica real.
+
+No había ninguna herramienta de validación de CloudFormation/SAM en la máquina — se instaló `cfn-lint` (`pip3 install --user cfn-lint`) y se corrió contra los 3 archivos: los 3 pasan con exit code 0, sin errores ni warnings. Se verificó con `grep` sobre todo el repo que nada (scripts, CI, código de la app) referencia `backend/iac/`. Se marcaron los 4 criterios de aceptación como cumplidos y se escribió `worklog.md`.
+
